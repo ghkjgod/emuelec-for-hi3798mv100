@@ -1,0 +1,44 @@
+#!/bin/sh
+
+set -eu
+
+STORAGE_ROOT=${1:-/storage}
+ENABLE=${2:-}
+
+case "${STORAGE_ROOT}" in
+    /|"") echo "refusing unsafe storage root: ${STORAGE_ROOT}" >&2; exit 1 ;;
+    /*) ;;
+    *) echo "storage root must be absolute: ${STORAGE_ROOT}" >&2; exit 1 ;;
+esac
+case "${ENABLE}" in ""|--enable) ;; *) echo "usage: $0 [STORAGE_ROOT] [--enable]" >&2; exit 2 ;; esac
+
+HISTB_STORAGE_ROOT="${STORAGE_ROOT}" /usr/bin/histb-storage-guard
+
+mkdir -p "${STORAGE_ROOT}/ee/releases" "${STORAGE_ROOT}/ee/logs" \
+    "${STORAGE_ROOT}/ee/state" "${STORAGE_ROOT}/ee/config" \
+    "${STORAGE_ROOT}/.config/emuelec/configs" \
+    "${STORAGE_ROOT}/.config/emuelec/logs" \
+    "${STORAGE_ROOT}/.config/emuelec/scripts" \
+    "${STORAGE_ROOT}/.config/emuelec/BGM" \
+    "${STORAGE_ROOT}/roms/nes" "${STORAGE_ROOT}/roms/snes" \
+    "${STORAGE_ROOT}/roms/gb" "${STORAGE_ROOT}/roms/gba" \
+    "${STORAGE_ROOT}/roms/megadrive" "${STORAGE_ROOT}/roms/pce" \
+    "${STORAGE_ROOT}/roms/psx" "${STORAGE_ROOT}/roms/arcade" \
+    "${STORAGE_ROOT}/roms/bios" \
+    "${STORAGE_ROOT}/roms/BGM" "${STORAGE_ROOT}/roms/bezels" \
+    "${STORAGE_ROOT}/roms/mplayer" \
+    "${STORAGE_ROOT}/savefiles" "${STORAGE_ROOT}/savestates" \
+    "${STORAGE_ROOT}/screenshots" "${STORAGE_ROOT}/playlists"
+echo 'histb-emuelec-storage-v1' >"${STORAGE_ROOT}/.histb-emuelec-storage-v1.new"
+mv -f "${STORAGE_ROOT}/.histb-emuelec-storage-v1.new" \
+    "${STORAGE_ROOT}/.histb-emuelec-storage-v1"
+
+if [ "${ENABLE}" = --enable ]; then
+    touch "${STORAGE_ROOT}/ee/enable-autostart"
+    rm -f "${STORAGE_ROOT}/ee/disable-autostart"
+    echo "p9 storage initialized and autostart enabled: ${STORAGE_ROOT}"
+else
+    echo "p9 storage initialized with autostart disabled: ${STORAGE_ROOT}"
+    echo "after manual smoke tests: touch ${STORAGE_ROOT}/ee/enable-autostart"
+fi
+sync

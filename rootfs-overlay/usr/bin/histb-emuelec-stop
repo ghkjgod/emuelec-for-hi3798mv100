@@ -1,0 +1,62 @@
+#!/bin/sh
+
+PID_FILE=/var/run/histb-emuelec.pid
+
+if [ -f "${PID_FILE}" ]; then
+    pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+    case "${pid}" in
+        ""|*[!0-9]*) pid= ;;
+    esac
+
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+        kill "${pid}" 2>/dev/null || true
+        seconds=0
+        while kill -0 "${pid}" 2>/dev/null && [ "${seconds}" -lt 10 ]; do
+            sleep 1
+            seconds=$((seconds + 1))
+        done
+        if kill -0 "${pid}" 2>/dev/null; then
+            kill -9 "${pid}" 2>/dev/null || true
+        fi
+    fi
+fi
+
+# The ARM programs are launched through /lib/ld-linux.so.3, so their process
+# name is the loader rather than retroarch/emulationstation.  Match exact argv
+# entries from only the built-in runtime or a validated A/B release path.  This
+# catches an orphaned game even when the supervisor PID file is already gone.
+runtime_pids()
+{
+    for proc in /proc/[0-9]*; do
+        [ -r "${proc}/cmdline" ] || continue
+        matched=0
+        while IFS= read -r argument; do
+            case "${argument}" in
+                /opt/emuelec/bin/retroarch|/opt/emuelec/bin/emulationstation|\
+                /storage/ee/releases/histb-emuelec-*/bin/retroarch|\
+                /storage/ee/releases/histb-emuelec-*/bin/emulationstation)
+                    matched=1
+                    ;;
+            esac
+        done <<EOF
+$(tr '\000' '\n' <"${proc}/cmdline")
+EOF
+        [ "${matched}" -eq 1 ] && printf '%s\n' "${proc##*/}"
+    done
+}
+
+pids=$(runtime_pids)
+if [ -n "${pids}" ]; then
+    kill ${pids} 2>/dev/null || true
+    seconds=0
+    while [ -n "$(runtime_pids)" ] && [ "${seconds}" -lt 10 ]; do
+        sleep 1
+        seconds=$((seconds + 1))
+    done
+    pids=$(runtime_pids)
+    [ -z "${pids}" ] || kill -9 ${pids} 2>/dev/null || true
+fi
+
+rm -f "${PID_FILE}"
+sync
+exit 0

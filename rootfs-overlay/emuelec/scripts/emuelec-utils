@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+RUNTIME_ROOT=${HISTB_EE_ROOT:-/opt/emuelec}
+case "${RUNTIME_ROOT}" in
+    /opt/emuelec|/storage/ee/releases/*) ;;
+    *) echo "refusing unexpected runtime root: ${RUNTIME_ROOT}" >&2; exit 1 ;;
+esac
+exec "${RUNTIME_ROOT}/bin/emuelec-utils" "$@"

@@ -1,0 +1,31 @@
+# Build output and source caches
+/artifacts/
+/build/
+/cache/
+/logs/
+/output/
+*.img
+*.raw
+*.ext4
+*.squashfs
+*.tar
+*.tar.*
+
+# Never publish content, credentials, generated identity, or local evidence
+/roms/
+/bios/
+shadow
+shadow-
+authorized_keys
+known_hosts
+*host_key*
+*.log
+*.pcap
+*.wav
+*.mkv
+
+# Editors and Python
+.idea/
+.vscode/
+__pycache__/
+*.pyc

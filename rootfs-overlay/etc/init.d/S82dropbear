@@ -1,0 +1,77 @@
+#!/bin/sh
+
+DROPBEAR=/usr/sbin/dropbear
+DROPBEARKEY=/usr/bin/dropbearkey
+HOST_KEY=/etc/dropbear/dropbear_rsa_host_key
+PID_FILE=/var/run/dropbear.pid
+[ ! -r /etc/default/histb-ssh ] || . /etc/default/histb-ssh
+: "${HISTB_ENABLE_SSH:=1}"
+: "${HISTB_SSH_BIND_ADDRESS:=0.0.0.0}"
+BIND_ADDRESS=${HISTB_SSH_BIND_ADDRESS}
+PASSWORD_ARGS=-s
+if [ "${HISTB_SSH_ALLOW_PASSWORD:-0}" = "1" ]; then
+    PASSWORD_ARGS=
+fi
+
+log_message()
+{
+    echo "$*"
+    if [ -w /dev/ttyS000 ]; then
+        echo "$*" >/dev/ttyS000 2>/dev/null || true
+    fi
+}
+
+start_dropbear()
+{
+    if [ "${HISTB_ENABLE_SSH}" != "1" ] || [ -z "${BIND_ADDRESS}" ]; then
+        log_message "SSH disabled by board configuration"
+        return 0
+    fi
+    [ -x "${DROPBEAR}" ] && [ -x "${DROPBEARKEY}" ] || {
+        log_message "HiSTB SSH unavailable: Dropbear payload is missing"
+        return 0
+    }
+    if [ -s "${PID_FILE}" ] && kill -0 "$(cat "${PID_FILE}")" 2>/dev/null; then
+        return 0
+    fi
+    mkdir -p /etc/dropbear /var/run
+    chmod 0700 /etc/dropbear
+    if [ ! -s "${HOST_KEY}" ]; then
+        "${DROPBEARKEY}" -t rsa -s 2048 -f "${HOST_KEY}" || {
+            log_message "HiSTB SSH unavailable: host-key generation failed"
+            return 0
+        }
+        chmod 0600 "${HOST_KEY}"
+        sync
+    fi
+    if ! "${DROPBEAR}" ${PASSWORD_ARGS} -P "${PID_FILE}" -r "${HOST_KEY}" -p "${BIND_ADDRESS}:22"; then
+        log_message "HiSTB SSH unavailable: Dropbear failed to start"
+        return 0
+    fi
+    sleep 1
+    if [ ! -s "${PID_FILE}" ] || ! kill -0 "$(cat "${PID_FILE}")" 2>/dev/null; then
+        log_message "HiSTB SSH unavailable: Dropbear did not remain running"
+        return 0
+    fi
+    log_message "HiSTB SSH ready on configured address ${BIND_ADDRESS}:22"
+}
+
+stop_dropbear()
+{
+    if [ -s "${PID_FILE}" ]; then
+        dropbear_pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+        if [ -n "${dropbear_pid}" ]; then
+            kill "${dropbear_pid}" 2>/dev/null || true
+        fi
+        rm -f "${PID_FILE}"
+    fi
+}
+
+case "${1:-start}" in
+    start) start_dropbear ;;
+    stop) stop_dropbear ;;
+    restart) stop_dropbear; start_dropbear ;;
+    *) echo "usage: $0 {start|stop|restart}" >&2; exit 2 ;;
+esac
+
+exit 0

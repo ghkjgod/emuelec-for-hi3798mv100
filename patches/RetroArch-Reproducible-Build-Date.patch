@@ -1,0 +1,33 @@
+diff --git a/retroarch.c b/retroarch.c
+--- a/retroarch.c
++++ b/retroarch.c
+@@ -36359,7 +36359,7 @@ static void retroarch_print_version(void)
+    printf("\n");
+ #endif
+    retroarch_get_capabilities(RARCH_CAPABILITIES_COMPILER, str, sizeof(str));
+-   strlcat(str, " Built: " __DATE__, sizeof(str));
++   strlcat(str, " Built: Oct 20 2021", sizeof(str));
+    fprintf(stdout, "%s\n", str);
+ }
+ 
+@@ -37387,7 +37387,7 @@ bool command_event(enum event_command cmd, void *data)
+                sizeof(str_output));
+          strlcat(str_output, ": ", sizeof(str_output));
+          strlcat(str_output, str,  sizeof(str_output));
+-         strlcat(str_output, "\n" FILE_PATH_LOG_INFO " Built: " __DATE__ "\n" FILE_PATH_LOG_INFO " Version: " PACKAGE_VERSION "\n", sizeof(str_output));
++         strlcat(str_output, "\n" FILE_PATH_LOG_INFO " Built: Oct 20 2021\n" FILE_PATH_LOG_INFO " Version: " PACKAGE_VERSION "\n", sizeof(str_output));
+ #ifdef HAVE_GIT_VERSION
+          strlcat(str_output, FILE_PATH_LOG_INFO " Git: ", sizeof(str_output));
+          strlcat(str_output, retroarch_git_version, sizeof(str_output));
+diff --git a/menu/menu_displaylist.c b/menu/menu_displaylist.c
+--- a/menu/menu_displaylist.c
++++ b/menu/menu_displaylist.c
+@@ -917,7 +917,7 @@ static unsigned menu_displaylist_parse_system_info(
+    tmp[0] = '\0';
+ 
+    snprintf(tmp, sizeof(tmp), "%s: %s",
+-         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_BUILD_DATE), __DATE__);
++         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SYSTEM_INFO_BUILD_DATE), "Oct 20 2021");
+ 
+    if (menu_entries_append_enum(list, tmp, "",
+          MENU_ENUM_LABEL_SYSTEM_INFO_ENTRY, MENU_SETTINGS_CORE_INFO_NONE, 0, 0))

@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.c text eol=lf
+*.cfg text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab

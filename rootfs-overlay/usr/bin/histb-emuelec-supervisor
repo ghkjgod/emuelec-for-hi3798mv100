@@ -1,0 +1,142 @@
+#!/bin/sh
+
+set -u
+
+STORAGE_ROOT=${HISTB_STORAGE_ROOT:-/storage}
+STATE_ROOT=${STORAGE_ROOT}/ee
+STATE_DIR=${STATE_ROOT}/state
+PID_FILE=/var/run/histb-emuelec.pid
+FB_DEVICE=${HISTB_FB_DEVICE:-/dev/fb0}
+MALI_DEVICE=${HISTB_MALI_DEVICE:-/dev/mali}
+DEVICE_WAIT_SECONDS=${HISTB_DEVICE_WAIT_SECONDS:-20}
+HEALTH_SECONDS=${HISTB_HEALTH_SECONDS:-30}
+ROLLBACK_HELPER=${HISTB_ROLLBACK_HELPER:-/usr/bin/histb-release-rollback}
+frontend_pid=
+
+valid_release_link()
+{
+    link_value=$1
+    case "${link_value}" in
+        releases/histb-emuelec-*) ;;
+        *) return 1 ;;
+    esac
+    release_name=${link_value#releases/}
+    case "${release_name}" in
+        ""|*/*|*..*|*[!A-Za-z0-9._-]*) return 1 ;;
+    esac
+    return 0
+}
+
+select_runtime()
+{
+    selected=/opt/emuelec
+    selected_id=builtin
+    if [ -L "${STATE_ROOT}/current" ]; then
+        release_link=$(readlink "${STATE_ROOT}/current" 2>/dev/null || true)
+        if valid_release_link "${release_link}"; then
+            candidate=${STATE_ROOT}/${release_link}
+        else
+            candidate=
+            echo "Ignoring unsafe current release link: ${release_link:-empty}" >&2
+        fi
+        if [ -n "${candidate}" ] && [ -x "${candidate}/bin/run-emulationstation.sh" ]; then
+            selected=${candidate}
+            selected_id=${release_link#releases/}
+        fi
+    fi
+}
+
+select_runtime
+RUNTIME_ROOT=${selected}
+RELEASE_ID=${selected_id}
+if [ ! -x "${RUNTIME_ROOT}/bin/run-emulationstation.sh" ]; then
+    echo "HiSTB EmuELEC runtime is missing below ${RUNTIME_ROOT}"
+    exit 1
+fi
+
+mkdir -p "${STATE_DIR}"
+attempt=0
+while [ "${attempt}" -lt "${DEVICE_WAIT_SECONDS}" ]; do
+    if [ -c "${FB_DEVICE}" ] && [ -c "${MALI_DEVICE}" ]; then
+        break
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+
+if [ ! -c "${FB_DEVICE}" ] || [ ! -c "${MALI_DEVICE}" ]; then
+    echo "HiSTB EmuELEC not started: ${FB_DEVICE} or ${MALI_DEVICE} is unavailable"
+    exit 1
+fi
+
+# Count only launches that reached usable framebuffer and Mali devices.  A
+# missing or slow driver must not consume a new release's health attempts.
+if [ "${RELEASE_ID}" != builtin ] && \
+   [ -f "${STATE_DIR}/pending" ] && \
+   [ "$(cat "${STATE_DIR}/pending" 2>/dev/null || true)" = "${RELEASE_ID}" ]; then
+    attempts=$(cat "${STATE_DIR}/attempts" 2>/dev/null || true)
+    case "${attempts}" in ""|*[!0-9]*) attempts=0 ;; esac
+    attempts=$((attempts + 1))
+    echo "${attempts}" >"${STATE_DIR}/attempts.new"
+    mv -f "${STATE_DIR}/attempts.new" "${STATE_DIR}/attempts"
+    sync
+    if [ "${attempts}" -gt 2 ]; then
+        echo "Release ${RELEASE_ID} failed two health windows; attempting rollback"
+        if "${ROLLBACK_HELPER}" "${STATE_ROOT}"; then
+            echo "${RELEASE_ID}" >"${STATE_DIR}/last-failed"
+            rm -f "${STATE_DIR}/pending" "${STATE_DIR}/attempts"
+            select_runtime
+            RUNTIME_ROOT=${selected}
+            RELEASE_ID=${selected_id}
+        else
+            echo "Automatic rollback unavailable; leaving frontend stopped" >&2
+            exit 1
+        fi
+    fi
+fi
+
+terminate_frontend()
+{
+    if [ -n "${frontend_pid}" ] && kill -0 "${frontend_pid}" 2>/dev/null; then
+        kill "${frontend_pid}" 2>/dev/null || true
+        wait "${frontend_pid}" 2>/dev/null || true
+    fi
+    rm -f "${PID_FILE}"
+    sync
+    exit 143
+}
+trap terminate_frontend HUP INT TERM
+
+echo "Starting HiSTB EmuELEC from ${RUNTIME_ROOT}"
+HISTB_EE_ROOT=${RUNTIME_ROOT} HISTB_STORAGE_ROOT=${STORAGE_ROOT} \
+    "${RUNTIME_ROOT}/bin/run-emulationstation.sh" &
+frontend_pid=$!
+
+elapsed=0
+while [ "${elapsed}" -lt "${HEALTH_SECONDS}" ]; do
+    if ! kill -0 "${frontend_pid}" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+if kill -0 "${frontend_pid}" 2>/dev/null && [ "${elapsed}" -ge "${HEALTH_SECONDS}" ]; then
+    echo "${RELEASE_ID}" >"${STATE_DIR}/healthy.new"
+    mv -f "${STATE_DIR}/healthy.new" "${STATE_DIR}/healthy"
+    echo "${RELEASE_ID}" >"${STATE_DIR}/last-good.new"
+    mv -f "${STATE_DIR}/last-good.new" "${STATE_DIR}/last-good"
+    if [ "${RELEASE_ID}" != builtin ] && \
+       [ "$(cat "${STATE_DIR}/pending" 2>/dev/null || true)" = "${RELEASE_ID}" ]; then
+        rm -f "${STATE_DIR}/pending" "${STATE_DIR}/attempts"
+    fi
+    sync
+    echo "HiSTB EmuELEC ${RELEASE_ID} passed the ${HEALTH_SECONDS}s process health window"
+fi
+
+wait "${frontend_pid}"
+status=$?
+frontend_pid=
+rm -f "${PID_FILE}"
+echo "HiSTB EmuELEC exited with status ${status}"
+exit "${status}"

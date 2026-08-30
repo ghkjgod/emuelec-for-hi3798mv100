@@ -1,0 +1,51 @@
+diff --git a/rootbox.mak b/rootbox.mak
+--- a/rootbox.mak
++++ b/rootbox.mak
+@@ -15,6 +15,10 @@ CA_ROOTBOX_MODE := DEBUG
+ endif
+ endif
+ 
++HISTB_EMUELEC_TOOL_ROOT ?= $(abspath $(SDK_DIR)/../emuelec/tools/histb)
++HISTB_EMUELEC_APP_OVERLAY ?= $(abspath $(SDK_DIR)/../artifacts/overlay)
++HISTB_EMUELEC_ROOTFS_OVERLAY ?= $(HISTB_EMUELEC_TOOL_ROOT)/rootfs-overlay
++
+ 
+ #===============================================================================
+ # rule
+@@ -62,7 +66,7 @@ else
+ 	-$(AT)mknod $(HI_ROOTBOX_DIR)/dev/ttyS000 c 204 64
+ endif
+ else
+-ifeq ($(HI_USER_SPACE_LIB),y) 
++ifeq ($(HI_USER_SPACE_LIB),y)
+ 	$(AT)cp -arf $(HI_SHARED_LIB_DIR)/*freetype.so* $(HI_ROOTBOX_DIR)/usr/lib
+ 	$(AT)cp -arf $(HI_SHARED_LIB_DIR)/libz.so* $(HI_ROOTBOX_DIR)/usr/lib
+ 	$(AT)cp -arf $(HI_EXTERN_LIB_DIR)/*AUDIO* $(HI_ROOTBOX_DIR)/usr/lib/
+@@ -70,6 +74,27 @@ ifeq ($(HI_USER_SPACE_LIB),y)
+ endif
+ endif
+ 
++ifneq ($(HISTB_EMUELEC_DISABLE),y)
++	$(AT)test -x $(HISTB_EMUELEC_APP_OVERLAY)/opt/emuelec/bin/emulationstation || \
++		(echo "HiSTB EmuELEC overlay is incomplete: run the tools/histb builds first" >&2; false)
++	$(AT)test -x $(HISTB_EMUELEC_APP_OVERLAY)/opt/emuelec/bin/run-emulationstation.sh
++	$(AT)test -x $(HISTB_EMUELEC_APP_OVERLAY)/opt/emuelec/bin/histb-egl-smoke
++	$(AT)test -e $(HISTB_EMUELEC_APP_OVERLAY)/opt/emuelec/lib/libSDL2-2.0.so.0
++	$(AT)test -x $(HISTB_EMUELEC_ROOTFS_OVERLAY)/etc/init.d/S95emuelec
++	$(AT)test -x $(HISTB_EMUELEC_ROOTFS_OVERLAY)/usr/bin/histb-emuelec-stop
++	$(AT)test -x $(HISTB_EMUELEC_ROOTFS_OVERLAY)/usr/bin/histb-storage-init
++	$(AT)test -x $(HISTB_EMUELEC_TOOL_ROOT)/target/install-release.sh
++	$(AT)test -z "$$(find -L $(HISTB_EMUELEC_APP_OVERLAY)/opt/emuelec/lib -type l -print -quit)" || \
++		(echo "HiSTB EmuELEC overlay contains a broken library symlink" >&2; false)
++	$(AT)cp -arf $(HISTB_EMUELEC_APP_OVERLAY)/. $(HI_ROOTBOX_DIR)/
++	$(AT)cp -arf $(HISTB_EMUELEC_ROOTFS_OVERLAY)/. $(HI_ROOTBOX_DIR)/
++	$(AT)install -m 0755 $(HISTB_EMUELEC_TOOL_ROOT)/target/install-release.sh \
++		$(HI_ROOTBOX_DIR)/usr/bin/histb-install-release
++	$(AT)grep -q '^::shutdown:/usr/bin/histb-emuelec-stop$$' $(HI_ROOTBOX_DIR)/etc/inittab || \
++		sed -i '\|^::shutdown:/bin/umount -a -r$$|i::shutdown:/usr/bin/histb-emuelec-stop' \
++		$(HI_ROOTBOX_DIR)/etc/inittab
++endif
++
+ ifeq ($(CFG_HI_ADVCA_SANDBOX_SUPPORT),y)
+ ifeq ($(CFG_HI_LOADER_APPLOADER),y)
+ 	$(AT)test -d $(CA_ROOTBOX_BUILD)/loader_build || tar xzf $(CA_ROOTBOX_BUILD)/loader_build.tar.gz -C $(CA_ROOTBOX_BUILD)/

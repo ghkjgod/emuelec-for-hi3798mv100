@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# Read-only board inventory for the first UART session.
+echo '=== HiSTB preflight ==='
+date 2>/dev/null || true
+uname -a
+echo '--- cmdline ---'
+cat /proc/cmdline 2>/dev/null || true
+echo '--- mounts ---'
+cat /proc/mounts 2>/dev/null || true
+echo '--- partitions ---'
+cat /proc/partitions 2>/dev/null || true
+echo '--- filesystems ---'
+cat /proc/filesystems 2>/dev/null || true
+echo '--- display and GPU nodes ---'
+ls -l /dev/fb* /dev/mali* 2>/dev/null || true
+for value in /sys/class/graphics/fb0/name /sys/class/graphics/fb0/virtual_size \
+    /sys/class/graphics/fb0/bits_per_pixel; do
+    if [ -r "${value}" ]; then
+        echo "${value}: $(cat "${value}")"
+    fi
+done
+echo '--- loaded modules ---'
+cat /proc/modules 2>/dev/null || true
+echo '--- ALSA ---'
+cat /proc/asound/cards 2>/dev/null || true
+cat /proc/asound/pcm 2>/dev/null || true
+echo '--- input ---'
+cat /proc/bus/input/devices 2>/dev/null || true
+echo '=== end preflight ==='

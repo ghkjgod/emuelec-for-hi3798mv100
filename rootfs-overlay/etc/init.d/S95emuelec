@@ -1,0 +1,80 @@
+#!/bin/sh
+
+STORAGE_ROOT=${HISTB_STORAGE_ROOT:-/storage}
+STATE_ROOT=${STORAGE_ROOT}/ee
+PID_FILE=/var/run/histb-emuelec.pid
+SUPERVISOR=${HISTB_SUPERVISOR:-/usr/bin/histb-emuelec-supervisor}
+STOPPER=${HISTB_STOPPER:-/usr/bin/histb-emuelec-stop}
+STORAGE_GUARD=${HISTB_STORAGE_GUARD:-/usr/bin/histb-storage-guard}
+
+log_message()
+{
+    echo "$*"
+    if [ -w /dev/ttyS000 ]; then
+        echo "$*" >/dev/ttyS000 2>/dev/null || true
+    fi
+}
+
+storage_is_safe()
+{
+    HISTB_STORAGE_ROOT="${STORAGE_ROOT}" \
+        "${STORAGE_GUARD}" --require-marker
+}
+
+register_xpad_compat()
+{
+    # Optional board-local compatibility hook. Keep the USB ID out of the
+    # public tree and provide it only in a private device configuration.
+    [ -n "${HISTB_XPAD_NEW_ID:-}" ] || return 0
+    new_id=/sys/bus/usb/drivers/xpad/new_id
+    if [ -w "${new_id}" ]; then
+        echo "${HISTB_XPAD_NEW_ID}" >"${new_id}" 2>/dev/null || true
+    fi
+}
+
+start_frontend()
+{
+    register_xpad_compat
+    if ! storage_is_safe; then
+        log_message "HiSTB EmuELEC not started: /storage failed the authenticated p9 guard"
+        return 0
+    fi
+    if [ ! -f "${STATE_ROOT}/enable-autostart" ]; then
+        log_message "HiSTB EmuELEC autostart is disabled; create ${STATE_ROOT}/enable-autostart after manual smoke tests"
+        return 0
+    fi
+    if [ -f "${STATE_ROOT}/disable-autostart" ]; then
+        log_message "HiSTB EmuELEC autostart disabled by ${STATE_ROOT}/disable-autostart"
+        return 0
+    fi
+    if [ ! -x "${SUPERVISOR}" ]; then
+        log_message "HiSTB EmuELEC supervisor is missing"
+        return 0
+    fi
+    if [ -f "${PID_FILE}" ]; then
+        old_pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+        if [ -n "${old_pid}" ] && kill -0 "${old_pid}" 2>/dev/null; then
+            log_message "HiSTB EmuELEC is already running as PID ${old_pid}"
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    mkdir -p /var/run "${STATE_ROOT}/logs" "${STATE_ROOT}/state"
+    HISTB_STORAGE_ROOT="${STORAGE_ROOT}" "${SUPERVISOR}" \
+        >>"${STATE_ROOT}/logs/supervisor.log" 2>&1 &
+    frontend_pid=$!
+    echo "${frontend_pid}" >"${PID_FILE}"
+    log_message "HiSTB EmuELEC supervisor started as PID ${frontend_pid}"
+}
+
+case "${1:-start}" in
+    start) start_frontend ;;
+    stop) "${STOPPER}" ;;
+    restart)
+        "${STOPPER}" || true
+        start_frontend
+        ;;
+    *) echo "usage: $0 {start|stop|restart}" >&2; exit 2 ;;
+esac
+
+exit 0

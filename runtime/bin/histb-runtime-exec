@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -lt 2 ]; then
+    echo "usage: $0 RUNTIME_ROOT PROGRAM [arguments...]" >&2
+    exit 2
+fi
+
+RUNTIME_ROOT=$1
+PROGRAM=$2
+shift 2
+
+case "${RUNTIME_ROOT}" in
+    /*) ;;
+    *) echo "runtime root must be absolute: ${RUNTIME_ROOT}" >&2; exit 2 ;;
+esac
+if [ ! -d "${RUNTIME_ROOT}" ]; then
+    echo "runtime root is not a directory: ${RUNTIME_ROOT}" >&2
+    exit 1
+fi
+if [ ! -x "${PROGRAM}" ]; then
+    echo "runtime program is not executable: ${PROGRAM}" >&2
+    exit 1
+fi
+
+RUNTIME_ROOT=$(readlink -f "${RUNTIME_ROOT}")
+PROGRAM=$(readlink -f "${PROGRAM}")
+case "${PROGRAM}" in
+    "${RUNTIME_ROOT}"/bin/*|"${RUNTIME_ROOT}"/lib/*) ;;
+    *) echo "program is outside runtime root: ${PROGRAM}" >&2; exit 2 ;;
+esac
+
+LOADER=${RUNTIME_ROOT}/compat/lib/ld-linux.so.3
+if [ -x "${LOADER}" ]; then
+    for required in "${RUNTIME_ROOT}/compat/lib/libc.so.6" \
+        "${RUNTIME_ROOT}/compat/usr/lib/libMali.so"; do
+        if [ ! -e "${required}" ]; then
+            echo "incomplete compatibility runtime: ${required}" >&2
+            exit 1
+        fi
+    done
+    LIBRARY_PATH=${RUNTIME_ROOT}/lib:${RUNTIME_ROOT}/compat/usr/lib:${RUNTIME_ROOT}/compat/lib
+    export ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH:-${RUNTIME_ROOT}/compat/usr/share/alsa/alsa.conf}
+    exec "${LOADER}" --library-path "${LIBRARY_PATH}" "${PROGRAM}" "$@"
+fi
+
+LOADER=${HISTB_SYSTEM_LOADER:-/lib/ld-linux.so.3}
+SYSTEM_USR_LIB=${HISTB_SYSTEM_USR_LIB:-/usr/lib}
+SYSTEM_LIB=${HISTB_SYSTEM_LIB:-/lib}
+SYSTEM_ALSA_CONFIG=${HISTB_SYSTEM_ALSA_CONFIG:-/usr/share/alsa/alsa.conf}
+
+for absolute_path in "${LOADER}" "${SYSTEM_USR_LIB}" "${SYSTEM_LIB}"; do
+    case "${absolute_path}" in
+        /*) ;;
+        *) echo "system runtime path must be absolute: ${absolute_path}" >&2; exit 2 ;;
+    esac
+done
+if [ ! -x "${LOADER}" ]; then
+    echo "system dynamic loader is not executable: ${LOADER}" >&2
+    exit 1
+fi
+for required in "${SYSTEM_LIB}/libc.so.6" \
+    "${SYSTEM_USR_LIB}/libMali.so"; do
+    if [ ! -e "${required}" ]; then
+        echo "incomplete system runtime: ${required}" >&2
+        exit 1
+    fi
+done
+
+LIBRARY_PATH=${RUNTIME_ROOT}/lib:${SYSTEM_USR_LIB}:${SYSTEM_LIB}
+if [ -r "${SYSTEM_ALSA_CONFIG}" ]; then
+    export ALSA_CONFIG_PATH=${ALSA_CONFIG_PATH:-${SYSTEM_ALSA_CONFIG}}
+fi
+exec "${LOADER}" --library-path "${LIBRARY_PATH}" "${PROGRAM}" "$@"

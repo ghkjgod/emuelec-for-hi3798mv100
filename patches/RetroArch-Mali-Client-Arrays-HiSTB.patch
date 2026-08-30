@@ -1,0 +1,78 @@
+diff --git a/gfx/drivers_shader/shader_glsl.c b/gfx/drivers_shader/shader_glsl.c
+index 9f4b775..7202088 100644
+--- a/gfx/drivers_shader/shader_glsl.c
++++ b/gfx/drivers_shader/shader_glsl.c
+@@ -524,6 +524,23 @@ static void gl_glsl_set_vbo(GLfloat **buffer, size_t *buffer_elems,
+    *buffer_elems = elems;
+ }
+ 
++#ifdef HISTB_MALI_CLIENT_ARRAYS
++static void gl_glsl_set_client_buffer(GLfloat **buffer,
++      size_t *buffer_elems, const GLfloat *data, size_t elems)
++{
++   if (elems > *buffer_elems)
++   {
++      GLfloat *new_buffer = (GLfloat*)
++         realloc(*buffer, elems * sizeof(GLfloat));
++      retro_assert(new_buffer);
++      *buffer = new_buffer;
++   }
++
++   memcpy(*buffer, data, elems * sizeof(GLfloat));
++   *buffer_elems = elems;
++}
++#endif
++
+ static INLINE void gl_glsl_set_attribs(glsl_shader_data_t *glsl,
+       GLuint vbo,
+       GLfloat **buffer, size_t *buffer_elems,
+@@ -532,11 +549,25 @@ static INLINE void gl_glsl_set_attribs(glsl_shader_data_t *glsl,
+ {
+    size_t i;
+ 
++#ifdef HISTB_MALI_CLIENT_ARRAYS
++   static bool workaround_logged;
++   (void)vbo;
++   glBindBuffer(GL_ARRAY_BUFFER, 0);
++   if (!workaround_logged)
++   {
++      RARCH_LOG("[GLSL]: Using HiSTB Mali client-side attribute arrays.\n");
++      workaround_logged = true;
++   }
++   if (elems != *buffer_elems ||
++         memcmp(data, *buffer, elems * sizeof(GLfloat)))
++      gl_glsl_set_client_buffer(buffer, buffer_elems, data, elems);
++#else
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+ 
+    if (elems != *buffer_elems ||
+          memcmp(data, *buffer, elems * sizeof(GLfloat)))
+       gl_glsl_set_vbo(buffer, buffer_elems, data, elems);
++#endif
+ 
+    for (i = 0; i < num_attrs; i++)
+    {
+@@ -545,15 +576,23 @@ static INLINE void gl_glsl_set_attribs(glsl_shader_data_t *glsl,
+          GLint loc = attrs[i].loc;
+ 
+          glEnableVertexAttribArray(loc);
++#ifdef HISTB_MALI_CLIENT_ARRAYS
++         glVertexAttribPointer(loc, attrs[i].size, GL_FLOAT, GL_FALSE, 0,
++               (const GLvoid*)((const unsigned char*)*buffer +
++                  attrs[i].offset));
++#else
+          glVertexAttribPointer(loc, attrs[i].size, GL_FLOAT, GL_FALSE, 0,
+                (const GLvoid*)(uintptr_t)attrs[i].offset);
++#endif
+          glsl->attribs_elems[glsl->attribs_index++] = loc;
+       }
+       else
+          RARCH_WARN("Attrib array buffer was overflown!\n");
+    }
+ 
++#ifndef HISTB_MALI_CLIENT_ARRAYS
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
++#endif
+ }
+ 
+ static void gl_glsl_clear_uniforms_frame(struct shader_uniforms_frame *frame)

@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -u
+
+RUNTIME_ROOT=${1:-/opt/emuelec}
+
+if [ ! -c /dev/fb0 ] || [ ! -c /dev/mali ]; then
+    echo '/dev/fb0 or /dev/mali is unavailable; not touching the display' >&2
+    exit 1
+fi
+for test_binary in histb-egl-gles1-smoke histb-egl-smoke histb-sdl2-smoke; do
+    if [ ! -x "${RUNTIME_ROOT}/bin/${test_binary}" ]; then
+        echo "missing ${RUNTIME_ROOT}/bin/${test_binary}" >&2
+        exit 1
+    fi
+done
+
+export LD_LIBRARY_PATH=${RUNTIME_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+RUNTIME_EXEC=${RUNTIME_ROOT}/bin/histb-runtime-exec
+test -x "${RUNTIME_EXEC}"
+echo '[1/3] EGL/GLES1'
+"${RUNTIME_EXEC}" "${RUNTIME_ROOT}" "${RUNTIME_ROOT}/bin/histb-egl-gles1-smoke" --frames 180 --use-fb-size || exit $?
+echo '[2/3] EGL/GLES2'
+"${RUNTIME_EXEC}" "${RUNTIME_ROOT}" "${RUNTIME_ROOT}/bin/histb-egl-smoke" --frames 180 --use-fb-size || exit $?
+echo '[3/3] SDL2 Mali-fbdev'
+SDL_VIDEODRIVER=mali "${RUNTIME_EXEC}" "${RUNTIME_ROOT}" "${RUNTIME_ROOT}/bin/histb-sdl2-smoke" || exit $?
+echo 'all manual display smoke tests passed'

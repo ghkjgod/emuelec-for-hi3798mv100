@@ -1,0 +1,24 @@
+#!/bin/sh
+
+set -eu
+
+STORAGE_ROOT=${HISTB_STORAGE_ROOT:-/storage}
+STATE_ROOT=${STORAGE_ROOT}/ee
+RUNTIME_ROOT=/opt/emuelec
+if [ -L "${STATE_ROOT}/current" ]; then
+    release_link=$(readlink "${STATE_ROOT}/current" 2>/dev/null || true)
+    case "${release_link}" in
+        releases/histb-emuelec-*) candidate=${STATE_ROOT}/${release_link} ;;
+        *) candidate= ;;
+    esac
+    release_name=${release_link#releases/}
+    case "${release_name}" in
+        ""|*/*|*..*|*[!A-Za-z0-9._-]*) candidate= ;;
+    esac
+    if [ -n "${candidate}" ] && [ -x "${candidate}/bin/run-retroarch.sh" ]; then
+        RUNTIME_ROOT=${candidate}
+    fi
+fi
+
+exec env HISTB_EE_ROOT=${RUNTIME_ROOT} HISTB_STORAGE_ROOT=${STORAGE_ROOT} \
+    "${RUNTIME_ROOT}/bin/run-retroarch.sh" "$@"

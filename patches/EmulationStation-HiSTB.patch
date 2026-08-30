@@ -1,0 +1,321 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f73b362..946cea4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,6 +5,7 @@ option(GL "Set to ON if targeting Desktop OpenGL" ${GL})
+ option(RPI "Set to ON to enable the Raspberry PI video player (omxplayer)" ${RPI})
+ option(CEC "CEC" ON)
+ option(BCM "BCM host" OFF)
++option(ENABLE_VLC "Enable VLC-backed video previews" ON)
+ 
+ # batocera
+ option(ENABLE_FILEMANAGER "Set to ON to enable f1 shortcut for filesystem")
+@@ -101,7 +102,9 @@ find_package(SDL2MIXER REQUIRED)
+ # batocera / customisations
+ find_package(SDL2 REQUIRED)
+ find_package(CURL REQUIRED)
+-find_package(VLC REQUIRED)
++if(ENABLE_VLC)
++  find_package(VLC REQUIRED)
++endif()
+ find_package(RapidJSON REQUIRED)
+ 
+ if(CEC)
+@@ -173,7 +176,6 @@ set(COMMON_INCLUDE_DIRS
+     # batocera / customisations    
+     ${SDL2_INCLUDE_DIR}
+     ${CURL_INCLUDE_DIR}
+-    ${VLC_INCLUDE_DIR}
+     ${RAPIDJSON_INCLUDE_DIRS}
+     ${CMAKE_CURRENT_SOURCE_DIR}/external
+     ${CMAKE_CURRENT_SOURCE_DIR}/es-core/src
+@@ -245,12 +247,16 @@ set(COMMON_LIBRARIES
+     ${SDLMIXER_LIBRARY}
+     # batocera / customisations    
+     ${CURL_LIBRARIES}
+-    ${VLC_LIBRARIES}
+     pugixml
+     nanosvg
+     id3v2
+ )
+ 
++if(ENABLE_VLC)
++  LIST(APPEND COMMON_INCLUDE_DIRS ${VLC_INCLUDE_DIR})
++  LIST(APPEND COMMON_LIBRARIES ${VLC_LIBRARIES})
++endif()
++
+ if(NOT DEFINED MSVC)
+  LIST(APPEND COMMON_LIBRARIES
+       )
+diff --git a/es-core/CMakeLists.txt b/es-core/CMakeLists.txt
+index 9236d53..f2d6071 100644
+--- a/es-core/CMakeLists.txt
++++ b/es-core/CMakeLists.txt
+@@ -149,7 +149,6 @@ set(CORE_SOURCES
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/TextEditComponent.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/VideoComponent.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/VideoPlayerComponent.cpp
+-	${CMAKE_CURRENT_SOURCE_DIR}/src/components/VideoVlcComponent.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/VolumeInfoComponent.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/components/ScrollbarComponent.cpp
+ 
+@@ -189,6 +188,16 @@ set(CORE_SOURCES
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/utils/ThreadPool.cpp
+ )
+ 
++if(ENABLE_VLC)
++	LIST(APPEND CORE_SOURCES
++		${CMAKE_CURRENT_SOURCE_DIR}/src/components/VideoVlcComponent.cpp
++	)
++else()
++	LIST(APPEND CORE_SOURCES
++		${CMAKE_CURRENT_SOURCE_DIR}/src/components/VideoVlcComponent_stub.cpp
++	)
++endif()
++
+ include_directories(${COMMON_INCLUDE_DIRS})
+ add_library(es-core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+ target_link_libraries(es-core ${COMMON_LIBRARIES})
+diff --git a/es-core/src/components/VideoVlcComponent_stub.cpp b/es-core/src/components/VideoVlcComponent_stub.cpp
+new file mode 100644
+index 0000000..7499be6
+--- /dev/null
++++ b/es-core/src/components/VideoVlcComponent_stub.cpp
+@@ -0,0 +1,148 @@
++#include "components/VideoVlcComponent.h"
++
++// HiSTB bring-up deliberately omits libVLC and its large transitive codec
++// stack. Keep the public video component contract so themes still render
++// their static snapshot, while video playback remains disabled.
++
++libvlc_instance_t* VideoVlcComponent::mVLC = nullptr;
++
++void VideoVlcComponent::setupVLC(std::string)
++{
++}
++
++VideoVlcComponent::VideoVlcComponent(Window* window, std::string subtitles) :
++	VideoComponent(window),
++	mMedia(nullptr),
++	mMediaPlayer(nullptr),
++	mSubtitlePath(subtitles),
++	mEffect(VideoVlcFlags::NONE),
++	mColorShift(0xFFFFFFFF),
++	mElapsed(0),
++	mCurrentLoop(0),
++	mLoops(-1)
++{
++}
++
++VideoVlcComponent::~VideoVlcComponent()
++{
++	stopVideo();
++}
++
++void VideoVlcComponent::setResize(float width, float height)
++{
++	mTargetSize = Vector2f(width, height);
++	mTargetIsMax = false;
++	mTargetIsMin = false;
++	mStaticImage.setResize(width, height);
++	resize();
++}
++
++void VideoVlcComponent::setMaxSize(float width, float height)
++{
++	mTargetSize = Vector2f(width, height);
++	mTargetIsMax = true;
++	mTargetIsMin = false;
++	mStaticImage.setMaxSize(width, height);
++	resize();
++}
++
++void VideoVlcComponent::setMinSize(float width, float height)
++{
++	mTargetSize = Vector2f(width, height);
++	mTargetIsMax = false;
++	mTargetIsMin = true;
++	mStaticImage.setMinSize(width, height);
++	resize();
++}
++
++void VideoVlcComponent::resize()
++{
++	if (mTargetSize != Vector2f::Zero())
++		setSize(mTargetSize);
++}
++
++void VideoVlcComponent::setColorShift(unsigned int color)
++{
++	mColorShift = color;
++}
++
++void VideoVlcComponent::render(const Transform4x4f& parentTrans)
++{
++	if (isShowing() && isVisible())
++		VideoComponent::render(parentTrans);
++}
++
++void VideoVlcComponent::setupContext()
++{
++}
++
++void VideoVlcComponent::freeContext()
++{
++}
++
++void VideoVlcComponent::startVideo()
++{
++	mIsPlaying = false;
++	mIsWaitingForVideoToStart = false;
++}
++
++void VideoVlcComponent::stopVideo()
++{
++	mIsPlaying = false;
++	mIsWaitingForVideoToStart = false;
++	mPlayingVideoPath.clear();
++}
++
++void VideoVlcComponent::handleLooping()
++{
++}
++
++void VideoVlcComponent::onVideoStarted()
++{
++	VideoComponent::onVideoStarted();
++}
++
++void VideoVlcComponent::applyTheme(const std::shared_ptr<ThemeData>& theme,
++	const std::string& view, const std::string& element, unsigned int properties)
++{
++	VideoComponent::applyTheme(theme, view, element, properties);
++	const ThemeData::ThemeElement* elem = theme->getElement(view, element, "video");
++	if (elem)
++	{
++		applyStoryboard(elem);
++		mStaticImage.applyStoryboard(elem, "snapshot");
++	}
++}
++
++void VideoVlcComponent::update(int deltaTime)
++{
++	mElapsed += deltaTime;
++	mStaticImage.update(deltaTime);
++	VideoComponent::update(deltaTime);
++}
++
++void VideoVlcComponent::onShow()
++{
++	VideoComponent::onShow();
++	mStaticImage.onShow();
++}
++
++ThemeData::ThemeElement::Property VideoVlcComponent::getProperty(const std::string name)
++{
++	if (name == "color")
++		return mColorShift;
++	if (name == "roundCorners")
++		return mRoundCorners;
++	return VideoComponent::getProperty(name);
++}
++
++void VideoVlcComponent::setProperty(const std::string name,
++	const ThemeData::ThemeElement::Property& value)
++{
++	if (name == "color" && value.type == ThemeData::ThemeElement::Property::PropertyType::Int)
++		setColorShift(value.i);
++	else if (name == "roundCorners" && value.type == ThemeData::ThemeElement::Property::PropertyType::Float)
++		setRoundCorners(value.f);
++	else
++		VideoComponent::setProperty(name, value);
++}
+diff --git a/es-core/src/Log.cpp b/es-core/src/Log.cpp
+index bfc3f3e..a5c6712 100644
+--- a/es-core/src/Log.cpp
++++ b/es-core/src/Log.cpp
+@@ -5,7 +5,7 @@
+ #include <iostream>
+ #include <mutex>
+ #include "Settings.h"
+-#include <iomanip> 
++#include <ctime>
+ 
+ #if WIN32
+ #include <Windows.h>
+@@ -66,7 +66,15 @@ void Log::init()
+ std::ostringstream& Log::get(LogLevel level)
+ {
+ 	time_t t = time(nullptr);
+-	os << std::put_time(localtime(&t), "%F %T\t");
++	char timestamp[32];
++	struct tm* localTime = localtime(&t);
++	if (localTime != NULL &&
++		strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S\t", localTime) > 0)
++	{
++		os << timestamp;
++	} else {
++		os << "0000-00-00 00:00:00\t";
++	}
+ 
+ 	switch (level)
+ 	{
+diff --git a/es-core/src/components/NinePatchComponent.cpp b/es-core/src/components/NinePatchComponent.cpp
+index 2077b21..a443815 100644
+--- a/es-core/src/components/NinePatchComponent.cpp
++++ b/es-core/src/components/NinePatchComponent.cpp
+@@ -4,6 +4,8 @@
+ #include "Log.h"
+ #include "ThemeData.h"
+ 
++#include <cmath>
++
+ NinePatchComponent::NinePatchComponent(Window* window, const std::string& path, unsigned int edgeColor, unsigned int centerColor) : GuiComponent(window),
+ 	mCornerSize(16, 16),
+ 	mEdgeColor(edgeColor), mCenterColor(centerColor),
+diff --git a/es-core/src/platform.cpp b/es-core/src/platform.cpp
+index 0e4176a..2ab361e 100644
+--- a/es-core/src/platform.cpp
++++ b/es-core/src/platform.cpp
+@@ -100,7 +100,10 @@ int runSystemCommand(const std::string& cmd_utf8, const std::string& name, Windo
+ 
+ 	return 1;
+ #elif _ENABLEEMUELEC
+-	return system((cmd_utf8 + " 2> /storage/.config/emuelec/logs/es_launch_stderr.log > /storage/.config/emuelec/logs/es_launch_stdout.log").c_str()); // emuelec
++	// The HiSTB launcher already redirects the complete frontend process to
++	// persistent storage. Do not use EmuELEC's Amlogic-only log path: its
++	// parent does not exist here and a failed redirection prevents game launch.
++	return system(cmd_utf8.c_str());
+ #else
+ 	return system((cmd_utf8 + " 2> /userdata/system/logs/es_launch_stderr.log | head -300 > /userdata/system/logs/es_launch_stdout.log").c_str()); // batocera
+ #endif
+diff --git a/es-core/src/AudioManager.cpp b/es-core/src/AudioManager.cpp
+index fe1a8d0..a437fc2 100644
+--- a/es-core/src/AudioManager.cpp
++++ b/es-core/src/AudioManager.cpp
+@@ -98,11 +98,6 @@ void AudioManager::deinit()
+ 	Mix_HookMusicFinished(nullptr);
+ 	Mix_HaltMusic();
+ 
+-#ifdef _ENABLEEMUELEC	
+-	LOG(LogInfo) << "Attempting to close SDL AUDIO";
+-	runSystemCommand("/emuelec/scripts/emuelec-utils audio alsa", "", nullptr); 
+-#endif
+-
+ 	//completely tear down SDL audio. else SDL hogs audio resources and emulators might fail to start...
+ 	Mix_CloseAudio();
+ 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
+diff --git a/es-app/src/EmulationStation.h b/es-app/src/EmulationStation.h
+--- a/es-app/src/EmulationStation.h
++++ b/es-app/src/EmulationStation.h
+@@ -9,7 +9,9 @@
+ #define PROGRAM_VERSION_MAINTENANCE  0
+ #define PROGRAM_VERSION_STRING "5.27-dev"
+ 
+-#define PROGRAM_BUILT_STRING __DATE__ " - " __TIME__
++// Avoid embedding the host clock in the target executable.  The source
++// snapshot is pinned by the release manifest and is the reproducible identity.
++#define PROGRAM_BUILT_STRING "source 2afe6efec4e0"
+ 
+ #define RESOURCE_VERSION_STRING "5,27,0\0"
+ #define RESOURCE_VERSION PROGRAM_VERSION_MAJOR,PROGRAM_VERSION_MINOR,PROGRAM_VERSION_MAINTENANCE

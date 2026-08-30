@@ -1,0 +1,91 @@
+diff --git a/qb/config.libs.sh b/qb/config.libs.sh
+--- a/qb/config.libs.sh
++++ b/qb/config.libs.sh
+@@ -223,7 +223,7 @@ if [ "$HAVE_DYLIB" = 'no' ] && [ "$HAVE_DYNAMIC" = 'yes' ]; then
+    die 1 'Error: Dynamic loading of libretro is enabled, but your platform does not appear to have dlopen(), use --disable-dynamic or --with-libretro="-lretro".'
+ fi
+ 
+-check_val '' ALSA -lasound alsa alsa '' '' false
++check_lib '' ALSA -lasound snd_pcm_open '' '#include <alsa/asoundlib.h>' '' false
+ check_val '' CACA -lcaca '' caca '' '' false
+ check_val '' SIXEL -lsixel '' libsixel 1.6.0 '' false
+ 
+@@ -261,7 +261,7 @@ check_val '' ROAR libroar 1.0.12
+ check_val '' JACK -ljack '' jack 0.120.1 '' false
+ check_val '' PULSE -lpulse '' libpulse '' '' false
+ check_val '' SDL -lSDL SDL sdl 1.2.10 '' false
+-check_val '' SDL2 -lSDL2 SDL2 sdl2 2.0.0 '' false
++check_lib '' SDL2 -lSDL2 SDL_Init '' '#include <SDL.h>' '' false
+ 
+ if [ "$HAVE_SDL2" = 'yes' ] && [ "$HAVE_SDL" = 'yes' ]; then
+    die : 'Notice: SDL drivers will be replaced by SDL2 ones.'
+diff --git a/gfx/drivers_context/mali_fbdev_ctx.c b/gfx/drivers_context/mali_fbdev_ctx.c
+index 8af6780..c89048b 100644
+--- a/gfx/drivers_context/mali_fbdev_ctx.c
++++ b/gfx/drivers_context/mali_fbdev_ctx.c
+@@ -59,7 +59,6 @@ typedef struct
+ 
+ static void gfx_ctx_mali_fbdev_destroy(void *data)
+ {
+-   int fd;
+    mali_ctx_data_t *mali = (mali_ctx_data_t*)data;
+ 
+    if (mali)
+@@ -71,14 +70,6 @@ static void gfx_ctx_mali_fbdev_destroy(void *data)
+        mali->resize       = false;
+        free(mali);
+    }
+-
+-   /* Clear framebuffer and set cursor on again */
+-   fd = open("/dev/tty", O_RDWR);
+-   ioctl(fd, VT_ACTIVATE, 5);
+-   ioctl(fd, VT_ACTIVATE, 1);
+-   close(fd);
+-
+-   system("setterm -cursor on");
+ }
+ 
+ static void gfx_ctx_mali_fbdev_get_video_size(void *data,
+@@ -126,7 +117,7 @@ static void *gfx_ctx_mali_fbdev_init(void *video_driver)
+ 
+ error:
+    egl_report_error();
+-   gfx_ctx_mali_fbdev_destroy(video_driver);
++   gfx_ctx_mali_fbdev_destroy(mali);
+    return NULL;
+ }
+ 
+@@ -159,6 +150,12 @@ static bool gfx_ctx_mali_fbdev_set_video_mode(void *data,
+    mali_ctx_data_t *mali = (mali_ctx_data_t*)data;
+    int fd                = open("/dev/fb0", O_RDWR);
+ 
++   if (fd < 0)
++   {
++      RARCH_ERR("Error opening /dev/fb0.\n");
++      goto error;
++   }
++
+    if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) < 0)
+    {
+       RARCH_ERR("Error obtaining framebuffer info.\n");
+@@ -177,9 +174,17 @@ static bool gfx_ctx_mali_fbdev_set_video_mode(void *data,
+    mali->native_window.width  = vinfo.xres;
+    mali->native_window.height = vinfo.yres;
+ 
+-   mali->refresh_rate = 1000000.0f / vinfo.pixclock * 1000000.0f /
+-         (vinfo.yres + vinfo.upper_margin + vinfo.lower_margin + vinfo.vsync_len) /
+-         (vinfo.xres + vinfo.left_margin  + vinfo.right_margin + vinfo.hsync_len);
++   if (vinfo.pixclock > 0 &&
++       (vinfo.yres + vinfo.upper_margin + vinfo.lower_margin + vinfo.vsync_len) > 0 &&
++       (vinfo.xres + vinfo.left_margin + vinfo.right_margin + vinfo.hsync_len) > 0)
++      mali->refresh_rate = 1000000.0f / vinfo.pixclock * 1000000.0f /
++            (vinfo.yres + vinfo.upper_margin + vinfo.lower_margin + vinfo.vsync_len) /
++            (vinfo.xres + vinfo.left_margin + vinfo.right_margin + vinfo.hsync_len);
++   else
++   {
++      mali->refresh_rate = 60.0f;
++      RARCH_WARN("Framebuffer timing is incomplete; assuming 60 Hz.\n");
++   }
+ 
+ #ifdef HAVE_EGL
+    if (!egl_create_context(&mali->egl, attribs))

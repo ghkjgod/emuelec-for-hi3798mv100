@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# Networking is on by default. An empty address selects DHCP; a non-empty
+# address selects static configuration. Board-local defaults live outside Git.
+[ ! -r /etc/default/histb-network ] || . /etc/default/histb-network
+: "${HISTB_ENABLE_NETWORK:=1}"
+: "${HISTB_DUT_ADDRESS:=}"
+: "${HISTB_DUT_NETMASK:=255.255.255.0}"
+DUT_INTERFACE=eth0
+
+log_message()
+{
+    echo "$*"
+    if [ -w /dev/ttyS000 ]; then
+        echo "$*" >/dev/ttyS000 2>/dev/null || true
+    fi
+}
+
+case "${1:-start}" in
+    start|restart)
+        if [ "${HISTB_ENABLE_NETWORK}" != "1" ]; then
+            log_message "HiSTB network disabled by board configuration"
+            exit 0
+        fi
+        attempt=0
+        while [ "${attempt}" -lt 10 ] && [ ! -e "/sys/class/net/${DUT_INTERFACE}" ]; do
+            sleep 1
+            attempt=$((attempt + 1))
+        done
+        if [ ! -e "/sys/class/net/${DUT_INTERFACE}" ]; then
+            log_message "HiSTB network unavailable: ${DUT_INTERFACE} was not created"
+            exit 0
+        fi
+        ifconfig lo 127.0.0.1 up
+        if [ -n "${HISTB_DUT_ADDRESS}" ]; then
+            ifconfig "${DUT_INTERFACE}" "${HISTB_DUT_ADDRESS}" netmask "${HISTB_DUT_NETMASK}" up
+            log_message "HiSTB network ready: ${DUT_INTERFACE} static ${HISTB_DUT_ADDRESS}"
+        else
+            ifconfig "${DUT_INTERFACE}" up
+            if ! command -v udhcpc >/dev/null 2>&1; then
+                log_message "HiSTB network unavailable: udhcpc is missing and no static address is configured"
+                exit 0
+            fi
+            if udhcpc -i "${DUT_INTERFACE}" -q -n -t 5 -T 3; then
+                log_message "HiSTB network ready: ${DUT_INTERFACE} DHCP"
+            else
+                log_message "HiSTB network unavailable: DHCP did not provide a lease"
+            fi
+        fi
+        ;;
+    stop)
+        ifconfig "${DUT_INTERFACE}" down 2>/dev/null || true
+        ;;
+    *) echo "usage: $0 {start|stop|restart}" >&2; exit 2 ;;
+esac
+
+exit 0

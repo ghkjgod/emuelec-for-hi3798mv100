@@ -1,0 +1,5 @@
+# Dropbear is enabled by default and listens on all configured interfaces.
+# The player image permits its documented development login by default.
+: "${HISTB_ENABLE_SSH:=1}"
+: "${HISTB_SSH_BIND_ADDRESS:=0.0.0.0}"
+: "${HISTB_SSH_ALLOW_PASSWORD:=1}"

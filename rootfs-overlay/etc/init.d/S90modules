@@ -1,0 +1,25 @@
+#!/bin/sh
+
+# The board boot partition provides the selected fixed kernel.
+# Its display, Mali, HDMI, audio, USB, and network drivers are built in.  The
+# SDK /kmod tree is built for 4.4.35_s40 and must never be inserted into it.
+EXPECTED_KERNEL=4.4.35_ecoo_81082668
+RUNNING_KERNEL=$(uname -r 2>/dev/null || echo unknown)
+
+if [ -f /kmod/load ]; then
+    if [ "${RUNNING_KERNEL}" = "${EXPECTED_KERNEL}" ]; then
+        echo "HiSTB: skipping incompatible SDK modules on ${RUNNING_KERNEL}"
+    else
+        echo "HiSTB: refusing unverified SDK module load on ${RUNNING_KERNEL}" >&2
+    fi
+fi
+
+TELNETD=$(type -p telnetd 2>/dev/null || true)
+if [ -n "${TELNETD}" ] && [ -f "${TELNETD}" ]; then
+    "${TELNETD}" &
+fi
+
+TEECD=$(type -p teecd 2>/dev/null || true)
+if [ -n "${TEECD}" ] && [ -f "${TEECD}" ]; then
+    "${TEECD}" &
+fi

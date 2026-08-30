@@ -1,0 +1,5 @@
+# Network is enabled by default. Leave the address empty for DHCP, or set a
+# board-local static address/netmask here before building.
+: "${HISTB_ENABLE_NETWORK:=1}"
+: "${HISTB_DUT_ADDRESS:=}"
+: "${HISTB_DUT_NETMASK:=255.255.255.0}"

@@ -1,0 +1,18 @@
+diff --git a/es-core/src/resources/ResourceManager.cpp b/es-core/src/resources/ResourceManager.cpp
+index 1f9fe2a..2b6af12 100644
+--- a/es-core/src/resources/ResourceManager.cpp
++++ b/es-core/src/resources/ResourceManager.cpp
+@@ -49,6 +49,13 @@ std::string ResourceManager::getResourcePath(const std::string& path) const
+ 	}
+ #endif
+ 
++	// Splash theme XML is optional. Splash.cpp deliberately falls back to the
++	// built-in legacy layout when neither the packaged resources nor the
++	// selected theme provides it, so do not report that normal state as an
++	// application error.
++	if (path == ":/splash.xml" || path == ":/gamesplash.xml")
++		return path;
++
+ 	LOG(LogError) << "Resource path not found: " << path;
+ 
+ 	// not a resource, return unmodified path

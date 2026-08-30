@@ -1,0 +1,78 @@
+#!/bin/sh
+
+set -eu
+
+STORAGE_ROOT=${HISTB_STORAGE_ROOT:-/storage}
+REQUIRE_MARKER=0
+
+case "${1:-}" in
+    "") ;;
+    --require-marker) REQUIRE_MARKER=1 ;;
+    *) echo "usage: $0 [--require-marker]" >&2; exit 2 ;;
+esac
+
+case "${STORAGE_ROOT}" in
+    /|"") echo "refusing unsafe storage root: ${STORAGE_ROOT}" >&2; exit 1 ;;
+    /*) ;;
+    *) echo "storage root must be absolute: ${STORAGE_ROOT}" >&2; exit 1 ;;
+esac
+
+[ -d "${STORAGE_ROOT}" ] || {
+    echo "storage root is missing: ${STORAGE_ROOT}" >&2
+    exit 1
+}
+if mountpoint -q "${STORAGE_ROOT}"; then
+    echo "refusing a separate /storage mount; full-flash storage must stay inside p9" >&2
+    exit 1
+fi
+root_info=$(awk '
+    $5 == "/" {
+        for (i = 6; i <= NF; i++) {
+            if ($i == "-") {
+                print $3 " " $(i + 1) " " $(i + 2)
+                exit
+            }
+        }
+    }
+' /proc/self/mountinfo)
+root_devid=${root_info%% *}
+root_rest=${root_info#* }
+root_fstype=${root_rest%% *}
+root_source=${root_rest#* }
+
+[ -n "${root_devid}" ] && [ "${root_fstype}" = ext4 ] || {
+    echo "root filesystem is not an identifiable ext4 mount" >&2
+    exit 1
+}
+case "${root_source}" in
+    /dev/mmcblk0p13|/dev/mmcblk0p13*)
+        echo "refusing cadata as the root filesystem" >&2
+        exit 1
+        ;;
+esac
+uevent=/sys/dev/block/${root_devid}/uevent
+[ -r "${uevent}" ] && grep -qx 'DEVNAME=mmcblk0p9' "${uevent}" || {
+    echo "root filesystem is not the authenticated mmcblk0p9 partition" >&2
+    exit 1
+}
+grep -qx 'histb-emuelec-p9-root-storage-v1' \
+    /etc/histb-emuelec-p9-root-storage-v1 2>/dev/null || {
+    echo "p9 root-storage image marker is missing" >&2
+    exit 1
+}
+[ "$(stat -c %d /)" = "$(stat -c %d "${STORAGE_ROOT}")" ] || {
+    echo "storage root is not on the p9 root filesystem" >&2
+    exit 1
+}
+
+if [ "${REQUIRE_MARKER}" -eq 1 ]; then
+    grep -qx 'histb-emuelec-storage-v1' \
+        "${STORAGE_ROOT}/.histb-emuelec-storage-v1" 2>/dev/null || {
+        echo "storage marker is missing below ${STORAGE_ROOT}" >&2
+        exit 1
+    }
+    [ -w "${STORAGE_ROOT}" ] || {
+        echo "storage root is not writable: ${STORAGE_ROOT}" >&2
+        exit 1
+    }
+fi

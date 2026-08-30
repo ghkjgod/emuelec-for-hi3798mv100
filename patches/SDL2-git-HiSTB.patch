@@ -1,0 +1,108 @@
+diff --git a/cmake/sdlchecks.cmake b/cmake/sdlchecks.cmake
+index ed26270..f82962b 100644
+--- a/cmake/sdlchecks.cmake
++++ b/cmake/sdlchecks.cmake
+@@ -766,7 +766,7 @@ macro(CheckMali)
+       set(SDL_VIDEO_DRIVER_MALI 1)
+       set(SDL_CFLAGS "${SDL_CFLAGS} -DLINUX -DEGL_API_FB")
+       list(APPEND EXTRA_LIBS EGL)
+-    endif(HAVE_VIDEO_MALI_EGL_MALI)
++    endif(HAVE_VIDEO_MALI_EGL_FB)
+   endif(VIDEO_MALI)
+ endmacro(CheckMali)
+ 
+diff --git a/src/video/mali-fbdev/SDL_malivideo.c b/src/video/mali-fbdev/SDL_malivideo.c
+index 8ea9d65..5b608cd 100644
+--- a/src/video/mali-fbdev/SDL_malivideo.c
++++ b/src/video/mali-fbdev/SDL_malivideo.c
+@@ -41,6 +41,12 @@
+ static int
+ MALI_Available(void)
+ {
++    int fd = open("/dev/fb0", O_RDWR, 0);
++
++    if (fd < 0) {
++        return 0;
++    }
++    close(fd);
+     return 1;
+ }
+ 
+@@ -129,22 +135,16 @@ MALI_VideoInit(_THIS)
+ 
+     fd = open("/dev/fb0", O_RDWR, 0);
+     if (fd < 0) {
++        SDL_free(data);
+         return SDL_SetError("mali-fbdev: Could not open framebuffer device");
+     }
+ 
+     if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) < 0) {
+-        MALI_VideoQuit(_this);
++        close(fd);
++        SDL_free(data);
+         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
+     }
+-    /* Enable triple buffering */
+-    /*
+-    vinfo.yres_virtual = vinfo.yres * 3;
+-    if (ioctl(fd, FBIOPUT_VSCREENINFO, vinfo) == -1) {
+-	printf("mali-fbdev: Error setting VSCREENINFO\n");
+-    }
+-    */
+     close(fd);
+-    system("setterm -cursor off");
+ 
+     data->native_display.width = vinfo.xres;
+     data->native_display.height = vinfo.yres;
+@@ -152,11 +152,17 @@ MALI_VideoInit(_THIS)
+     SDL_zero(current_mode);
+     current_mode.w = vinfo.xres;
+     current_mode.h = vinfo.yres;
+-    /* FIXME: Is there a way to tell the actual refresh rate? */
+-    current_mode.refresh_rate = 60;
+-    /* 32 bpp for default */
+-    //current_mode.format = SDL_PIXELFORMAT_ABGR8888;
+-    current_mode.format = SDL_PIXELFORMAT_RGBX8888;
++    /* The vendor display service owns timing setup; zero means unknown. */
++    current_mode.refresh_rate = 0;
++    if (vinfo.bits_per_pixel == 32 &&
++        vinfo.red.offset == 16 && vinfo.red.length == 8 &&
++        vinfo.green.offset == 8 && vinfo.green.length == 8 &&
++        vinfo.blue.offset == 0 && vinfo.blue.length == 8 &&
++        vinfo.transp.offset == 24 && vinfo.transp.length == 8) {
++        current_mode.format = SDL_PIXELFORMAT_ARGB8888;
++    } else {
++        current_mode.format = SDL_PIXELFORMAT_UNKNOWN;
++    }
+ 
+     current_mode.driverdata = NULL;
+ 
+@@ -179,13 +185,6 @@ MALI_VideoInit(_THIS)
+ void
+ MALI_VideoQuit(_THIS)
+ {
+-    /* Clear the framebuffer and ser cursor on again */
+-    int fd = open("/dev/tty", O_RDWR);
+-    ioctl(fd, VT_ACTIVATE, 5);
+-    ioctl(fd, VT_ACTIVATE, 1);
+-    close(fd);
+-    system("setterm -cursor on");
+-
+ #ifdef SDL_INPUT_LINUXEV
+     SDL_EVDEV_Quit();
+ #endif
+@@ -228,13 +227,14 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
+ 
+     if (!_this->egl_data) {
+         if (SDL_GL_LoadLibrary(NULL) < 0) {
++            SDL_free(windowdata);
+             return -1;
+         }
+     }
+     windowdata->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType) &displaydata->native_display);
+ 
+     if (windowdata->egl_surface == EGL_NO_SURFACE) {
+-        MALI_VideoQuit(_this);
++        SDL_free(windowdata);
+         return SDL_SetError("mali-fbdev: Can't create EGL window surface");
+     }

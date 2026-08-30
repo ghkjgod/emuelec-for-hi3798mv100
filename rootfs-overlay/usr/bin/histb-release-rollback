@@ -1,0 +1,85 @@
+#!/bin/sh
+
+set -eu
+
+STATE_ROOT=${1:-/storage/ee}
+TEST_MODE=${HISTB_INSTALL_TEST_MODE:-0}
+case "${STATE_ROOT}" in
+    /|"") echo "refusing unsafe state root: ${STATE_ROOT}" >&2; exit 1 ;;
+    /*) ;;
+    *) echo "state root must be absolute: ${STATE_ROOT}" >&2; exit 1 ;;
+esac
+if [ "${STATE_ROOT}" != /storage/ee ] && [ "${TEST_MODE}" != 1 ]; then
+    echo "custom state roots are allowed only with HISTB_INSTALL_TEST_MODE=1" >&2
+    exit 1
+fi
+if [ "${STATE_ROOT}" = /storage/ee ]; then
+    [ -x /usr/bin/histb-storage-guard ] || {
+        echo "refusing rollback without the p9 storage identity guard" >&2
+        exit 1
+    }
+    HISTB_STORAGE_ROOT=/storage \
+        /usr/bin/histb-storage-guard --require-marker || {
+        echo "refusing rollback outside the authenticated mmcblk0p9 root storage" >&2
+        exit 1
+    }
+fi
+
+valid_release_link()
+{
+    link_value=$1
+    case "${link_value}" in releases/histb-emuelec-*) ;; *) return 1 ;; esac
+    release_name=${link_value#releases/}
+    case "${release_name}" in ""|*/*|*..*|*[!A-Za-z0-9._-]*) return 1 ;; esac
+    [ -x "${STATE_ROOT}/${link_value}/bin/run-emulationstation.sh" ]
+}
+
+replace_release_link()
+{
+    source_link=$1
+    destination_link=$2
+    if [ -e "${destination_link}" ] && [ ! -L "${destination_link}" ]; then
+        echo "refusing to replace non-symlink: ${destination_link}" >&2
+        return 1
+    fi
+    # BusyBox 1.26 mv follows a destination symlink to a directory and lacks
+    # -T.  Remove the validated link first; /opt/emuelec remains the fallback
+    # if power is lost before the temporary link is renamed into place.
+    rm -f "${destination_link}"
+    mv "${source_link}" "${destination_link}"
+}
+
+if [ ! -L "${STATE_ROOT}/previous" ]; then
+    echo "no previous HiSTB EmuELEC release is recorded" >&2
+    exit 1
+fi
+
+previous=$(readlink "${STATE_ROOT}/previous")
+if ! valid_release_link "${previous}"; then
+    echo "previous release link is unsafe or incomplete: ${previous}" >&2
+    exit 1
+fi
+current=
+if [ -L "${STATE_ROOT}/current" ]; then
+    current=$(readlink "${STATE_ROOT}/current" 2>/dev/null || true)
+    if ! valid_release_link "${current}"; then
+        echo "current release link is unsafe or incomplete: ${current}" >&2
+        exit 1
+    fi
+elif [ -e "${STATE_ROOT}/current" ]; then
+    echo "current exists but is not a symlink" >&2
+    exit 1
+fi
+
+rm -f "${STATE_ROOT}/current.new"
+ln -s "${previous}" "${STATE_ROOT}/current.new"
+replace_release_link "${STATE_ROOT}/current.new" "${STATE_ROOT}/current"
+
+if [ -n "${current}" ]; then
+    rm -f "${STATE_ROOT}/previous.new"
+    ln -s "${current}" "${STATE_ROOT}/previous.new"
+    replace_release_link "${STATE_ROOT}/previous.new" "${STATE_ROOT}/previous"
+fi
+
+sync
+echo "rolled back current release to ${previous}; restart the frontend to activate"
