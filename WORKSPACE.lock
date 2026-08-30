@@ -1,0 +1,7 @@
+# Machine-readable upstream lock used by scripts/bootstrap-workspace.sh.
+# Values intentionally contain no workstation-specific paths.
+HISTB_SDK_URL=https://gitcode.com/eagle_xmw/HiSTBLinuxV100R005C00SPC050.git
+HISTB_SDK_COMMIT=fd20f78ab02934e71474dbb1d933c6ec911b01c9
+HISTB_EMUELEC_URL=https://github.com/EmuELEC/EmuELEC.git
+HISTB_EMUELEC_COMMIT=65b3db37ebdca93d543b7e7b3d5df4a2c9ceee79
+HISTB_SDK_CONFIG_SHA256=b73800e5ba039d9e8d67a1c10498e19d69efed24f8801e067ace1b212cdace95

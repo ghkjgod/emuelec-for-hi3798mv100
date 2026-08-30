@@ -1,0 +1,10 @@
+[submodule "sdk"]
+	path = sdk
+	url = https://gitcode.com/eagle_xmw/HiSTBLinuxV100R005C00SPC050.git
+	branch = master
+	shallow = true
+[submodule "emuelec"]
+	path = emuelec
+	url = https://github.com/EmuELEC/EmuELEC.git
+	branch = master_32bit
+	shallow = true

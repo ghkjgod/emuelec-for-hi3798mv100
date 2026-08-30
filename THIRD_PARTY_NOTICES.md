@@ -11,7 +11,7 @@ Pinned components used by the recipe include:
 | Component | Revision/version | License boundary |
 |---|---|---|
 | EmuELEC | `65b3db37ebdca93d543b7e7b3d5df4a2c9ceee79` | Package aggregation; retain each upstream license |
-| HiSTBLinux BSP | `fd20f78ab02934e71474dbb1d933c6ec911b01c9` | Mixed/vendor terms; SDK and binaries are not distributed here |
+| HiSTBLinux BSP | `fd20f78ab02934e71474dbb1d933c6ec911b01c9` | Mixed/vendor terms; fetched as the fixed `sdk/` submodule and not relicensed here |
 | EmulationStation | `2afe6efec4e09176882d98323bda5d3f664870a7` | Retain upstream license |
 | RetroArch | `ccbff758b46556407d1b9931a72cfcc46201276d` | GPL family; retain upstream COPYING |
 | QuickNES | `31654810b9ebf8b07f9c4dc27197af7714364ea7` | LGPL-2.1-or-later upstream |
@@ -25,6 +25,7 @@ Pinned components used by the recipe include:
 | SDL2 | 2.0.9 | zlib license |
 | Dropbear | 2026.94 | Upstream component-specific notices |
 
-No ROM, console BIOS, vendor SDK, vendor binary, device backup or official
-flashing tool is included. Obtain those only from lawful sources and follow
-their own terms.
+No ROM, console BIOS, device backup, generated firmware image or official
+flashing tool is stored in this repository. The complete upstream SDK checkout
+is linked as a fixed external Git submodule; its vendor files remain governed
+by upstream terms. Review those terms before use or redistribution.
