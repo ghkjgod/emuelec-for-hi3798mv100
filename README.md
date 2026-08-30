@@ -18,7 +18,7 @@
 sudo apt update
 sudo apt install -y \
   build-essential git patch make ninja-build cmake pkg-config \
-  python3 perl gawk bison flex gettext autoconf automake libtool \
+  python3 perl gawk bison flex gettext texinfo autoconf automake libtool \
   rsync file bc curl wget libncurses-dev \
   tar gzip bzip2 xz-utils unzip e2fsprogs zlib1g-dev libssl-dev openssl \
   libc6-i386 lib32z1
