@@ -1,0 +1,12 @@
+# Optional TF-card selector. UUID wins over label. When both are empty, the
+# boot helper accepts exactly one partition on an MMC device whose kernel type
+# is SD; it never treats the eMMC root device as removable storage.
+: "${HISTB_TF_ENABLE:=1}"
+: "${HISTB_TF_UUID:=}"
+: "${HISTB_TF_LABEL:=}"
+: "${HISTB_TF_MOUNT:=/media/emuelec-tf}"
+
+# auto: direct-load a verified core from ext4; import verified FAT/exFAT cores
+# into the internal content-addressed cache. Other values: direct, cache,
+# disabled. "direct" still falls back to cache on FAT/exFAT.
+: "${HISTB_TF_CORE_MODE:=auto}"

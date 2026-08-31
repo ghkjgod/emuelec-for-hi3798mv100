@@ -32,7 +32,7 @@ while IFS='|' read -r filename expected url; do
   partial="${destination}.partial.$$"
   trap 'rm -f -- "${partial:-}"' EXIT HUP INT TERM
   echo "Downloading ${filename}"
-  curl --fail --location --retry 3 --retry-delay 2 \
+  curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 \
     --connect-timeout 30 --speed-limit 1024 --speed-time 120 --max-time 900 \
     --output "${partial}" "${url}"
   actual="$(sha256sum "${partial}" | awk '{print $1}')"

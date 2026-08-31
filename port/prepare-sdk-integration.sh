@@ -41,11 +41,14 @@ for required in \
   rootfs-overlay/etc/init.d/S90modules \
   rootfs-overlay/etc/init.d/S81histb-network \
   rootfs-overlay/etc/init.d/S82dropbear \
+  rootfs-overlay/etc/init.d/S91histb-tf-storage \
   rootfs-overlay/etc/init.d/S95emuelec \
   rootfs-overlay/usr/bin/histb-emuelec-supervisor \
   rootfs-overlay/usr/bin/histb-emuelec-stop \
   rootfs-overlay/usr/bin/histb-storage-init \
   rootfs-overlay/usr/bin/histb-storage-guard \
+  rootfs-overlay/usr/bin/histb-tf-storage \
+  rootfs-overlay/usr/bin/histb-tf-core-select \
   rootfs-overlay/emuelec/scripts/emuelec-utils \
   target/install-release.sh; do
   [[ -x "${SCRIPT_DIR}/${required}" ]] || {

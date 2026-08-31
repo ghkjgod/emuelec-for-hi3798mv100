@@ -33,10 +33,18 @@ def main():
     args = parser.parse_args()
     systems = ET.parse(args.config).getroot().findall("system")
     expected = {
-        "nes": "quicknes", "snes": "snes9x2010", "gb": "gambatte",
-        "gba": "vba_next", "megadrive": "genesis_plus_gx",
+        "nes": "fceumm", "snes": "snes9x2010", "gb": "gambatte",
+        "gba": "gpsp", "gba-mgba": "mgba", "megadrive": "picodrive",
         "pce": "mednafen_pce_fast", "psx": "pcsx_rearmed",
-        "arcade": "mame2003", "diagnostics": None,
+        "arcade": "mame2003_plus", "fbneo": "fbneo",
+        "mame": "mame2003_plus", "pgm2": "fbneo", "diagnostics": None,
+        "tf-nes": "fceumm", "tf-snes": "snes9x2010",
+        "tf-gb": "gambatte", "tf-gba": "gpsp", "tf-gba-mgba": "mgba",
+        "tf-megadrive": "picodrive",
+        "tf-pce": "mednafen_pce_fast", "tf-psx": "pcsx_rearmed",
+        "tf-arcade": "mame2003_plus", "tf-fbneo": "fbneo",
+        "tf-mame": "mame2003_plus", "tf-pgm2": "fbneo",
+        "tf-nesh": "fceumm", "tf-famicom": "fceumm",
     }
     if {node.findtext("name") for node in systems} != set(expected):
         raise AssertionError("unexpected ES systems")
@@ -57,7 +65,7 @@ def main():
             prefix = "${HISTB_EE_ROOT}/bin/run-retroarch.sh"
             wanted_command = prefix + " " + core + " %ROM%"
         for filename in names:
-            rom = "/storage/roms/" + name + "/" + filename
+            rom = (node.findtext("path") or "") + "/" + filename
             rendered = command.replace(prefix, "printf '%s\\0'", 1)
             rendered = rendered.replace("%ROM%", es_escape(rom))
             result = subprocess.run(

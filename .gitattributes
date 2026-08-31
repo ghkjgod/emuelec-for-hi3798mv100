@@ -4,3 +4,5 @@
 *.c text eol=lf
 *.cfg text eol=lf
 *.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
+*.so binary
+tf-card/EmuELEC/licenses/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab

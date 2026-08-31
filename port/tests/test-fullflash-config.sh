@@ -18,12 +18,16 @@ bash -n \
 sh -n \
   "${OVERLAY}/usr/bin/histb-storage-guard" \
   "${OVERLAY}/usr/bin/histb-storage-init" \
+  "${OVERLAY}/usr/bin/histb-tf-storage" \
+  "${OVERLAY}/usr/bin/histb-tf-core-select" \
   "${OVERLAY}/usr/bin/histb-release-rollback" \
   "${OVERLAY}/usr/bin/histb-emuelec-stop" \
   "${OVERLAY}/etc/init.d/S81histb-network" \
   "${OVERLAY}/etc/init.d/S82dropbear" \
+  "${OVERLAY}/etc/init.d/S91histb-tf-storage" \
   "${OVERLAY}/etc/init.d/S95emuelec" \
   "${HISTB_DIR}/runtime/bin/run-emulationstation.sh" \
+  "${HISTB_DIR}/runtime/bin/histb-sync-es-systems" \
   "${HISTB_DIR}/runtime/bin/run-retroarch.sh" \
   "${HISTB_DIR}/runtime/bin/emuelec-utils" \
   "${HISTB_DIR}/target/install-release.sh"
@@ -52,6 +56,22 @@ grep -Fq "DEVNAME=mmcblk0p9" "${OVERLAY}/usr/bin/histb-storage-guard"
 grep -Fq "/dev/mmcblk0p13" "${OVERLAY}/usr/bin/histb-storage-guard"
 grep -Fq 'refusing a separate /storage mount' \
   "${OVERLAY}/usr/bin/histb-storage-guard"
+grep -Fq 'device/type' "${OVERLAY}/usr/bin/histb-tf-storage"
+grep -Fq '= SD ]' "${OVERLAY}/usr/bin/histb-tf-storage"
+grep -Fq 'root_mmc_parent' "${OVERLAY}/usr/bin/histb-tf-storage"
+grep -Fq 'rw,nodev,nosuid,noatime,exec' "${OVERLAY}/usr/bin/histb-tf-storage"
+grep -Fq 'rw,nodev,nosuid,noatime,noexec' "${OVERLAY}/usr/bin/histb-tf-storage"
+grep -Fq 'target dlopen/dependency/libretro probe failed' \
+  "${OVERLAY}/usr/bin/histb-tf-core-select"
+grep -Fq 'TF core unavailable or incompatible; using the built-in' \
+  "${HISTB_DIR}/runtime/bin/run-retroarch.sh"
+grep -Fq 'source=direct-tf' "${OVERLAY}/usr/bin/histb-tf-core-select"
+grep -Fq 'source=tf-cache' "${OVERLAY}/usr/bin/histb-tf-core-select"
+grep -Fq '/media/emuelec-tf/EmuELEC/roms/nes' \
+  "${HISTB_DIR}/runtime/etc/emulationstation/es_systems.cfg"
+grep -Fq '|| true' "${OVERLAY}/etc/init.d/S91histb-tf-storage"
+grep -Fq 'preserving user-modified EmulationStation systems configuration' \
+  "${HISTB_DIR}/runtime/bin/histb-sync-es-systems"
 for launcher in run-emulationstation.sh run-retroarch.sh; do
   grep -Fq '/usr/bin/histb-storage-guard --require-marker' \
     "${HISTB_DIR}/runtime/bin/${launcher}"

@@ -32,8 +32,8 @@ RELEASE_STAGE="${STAGE_ROOT}/${RELEASE_ID}"
 ARCHIVE="${PACKAGE_ROOT}/${RELEASE_ID}.tar.gz"
 ROOTFS_IMAGE="${HISTB_OUT_ROOT}/image/emmc_image/rootfs_6846M.ext4"
 CORE_NAMES=(
-  quicknes snes9x2010 gambatte vba_next genesis_plus_gx mednafen_pce_fast
-  pcsx_rearmed mame2003
+  fceumm gambatte gpsp mgba picodrive snes9x2010 mednafen_pce_fast
+  pcsx_rearmed fbneo mame2003_plus
 )
 
 case "${STAGE_ROOT}" in
@@ -44,12 +44,17 @@ esac
 for required in \
     "${OVERLAY}/bin/emulationstation" \
     "${OVERLAY}/bin/retroarch" \
+    "${OVERLAY}/bin/histb-core-probe" \
     "${OVERLAY}/bin/histb-runtime-exec" \
+    "${OVERLAY}/bin/histb-sync-es-systems" \
+    "${OVERLAY}/bin/histb-controller-db-select" \
     "${OVERLAY}/bin/run-emulationstation.sh" \
     "${OVERLAY}/bin/run-retroarch.sh" \
     "${OVERLAY}/bin/emuelec-utils" \
     "${OVERLAY}/share/emulationstation/themes/HiSTB-EmuELEC-carbon/nes/theme.xml" \
-    "${OVERLAY}/share/emulationstation/themes/HiSTB-EmuELEC-carbon/mame/theme.xml"; do
+    "${OVERLAY}/share/emulationstation/themes/HiSTB-EmuELEC-carbon/mame/theme.xml" \
+    "${OVERLAY}/share/sdl/gamecontrollerdb.txt" \
+    "${OVERLAY}/share/licenses/SDL_GameControllerDB/LICENSE"; do
   if [[ ! -f "${required}" ]]; then
     echo "missing packaged runtime input: ${required}" >&2
     exit 1
@@ -59,6 +64,12 @@ for core in "${CORE_NAMES[@]}"; do
   required="${OVERLAY}/lib/libretro/${core}_libretro.so"
   if [[ ! -f "${required}" ]]; then
     echo "missing packaged libretro core: ${required}" >&2
+    exit 1
+  fi
+done
+for core in "${CORE_NAMES[@]}"; do
+  if ! find "${OVERLAY}/share/licenses/libretro-cores/${core}" -type f -print -quit | grep -q .; then
+    echo "missing staged license material for libretro core: ${core}" >&2
     exit 1
   fi
 done
@@ -76,7 +87,10 @@ mkdir -p "${RELEASE_STAGE}/bin" "${RELEASE_STAGE}/lib/libretro" \
 install -m 0755 \
   "${OVERLAY}/bin/emulationstation" \
   "${OVERLAY}/bin/retroarch" \
+  "${OVERLAY}/bin/histb-core-probe" \
   "${OVERLAY}/bin/histb-runtime-exec" \
+  "${OVERLAY}/bin/histb-sync-es-systems" \
+  "${OVERLAY}/bin/histb-controller-db-select" \
   "${OVERLAY}/bin/emuelec-utils" \
   "${OVERLAY}/bin/run-emulationstation.sh" \
   "${OVERLAY}/bin/run-retroarch.sh" \
@@ -93,6 +107,8 @@ cp -a "${OVERLAY}/etc/." "${RELEASE_STAGE}/etc/"
 cp -a "${OVERLAY}/share/emulationstation" "${RELEASE_STAGE}/share/"
 cp -a "${OVERLAY}/share/retroarch" "${RELEASE_STAGE}/share/"
 cp -a "${OVERLAY}/share/libretro" "${RELEASE_STAGE}/share/"
+cp -a "${OVERLAY}/share/sdl" "${RELEASE_STAGE}/share/"
+cp -a "${OVERLAY}/share/licenses" "${RELEASE_STAGE}/share/"
 
 for pattern in \
     'libSDL2-2.0.so*' 'libSDL2_mixer-2.0.so*' 'libogg.so*' 'libvorbis.so*' \
@@ -122,17 +138,20 @@ target=hi3798mv100-hi3798mdmo1g
 abi=ARMv7 EABI5 softfp
 frontend=EmulationStation 2afe6efec4e09176882d98323bda5d3f664870a7
 retroarch=ccbff758b46556407d1b9931a72cfcc46201276d
-quicknes=31654810b9ebf8b07f9c4dc27197af7714364ea7
-snes9x2010=187e2b58fc09dfeb9fdb5a95bc26786219a111cf
-gambatte=dd1cf9fdbadbdceee50ff0600321251c823c3ca5
-vba_next=019132daf41e33a9529036b8728891a221a8ce2e
-genesis_plus_gx=7fa34f20de659004399f58a845291a4496cc9d8c
-mednafen_pce_fast=bdcb39400470cfc9457e170e223a2e70130fdd5c
-pcsx_rearmed=19b9695a71f15ef0bf61c7c3cfd6c98ec5ccb028
-mame2003=e3d1dac4cfaa4d03f8da5a6d78149bfefe894302
+fceumm=236ccdfc911e84c60fea6b9d0699c2d440a8de14
+gambatte=d9d6cd06382d1ced30de34d56d3609452323dab1
+gpsp=8d268a6bb2cd799f8f2791ebb544a7ef550cfc6f
+mgba=c65e8a3d4666b0ea68a01578232452f31b185332
+picodrive=733c711a477a642fd2006d5a7a581b2790ec36b4
+snes9x2010=7db129b1ecdccb38cb4d7184bcbed39beed79656
+mednafen_pce_fast=2f623abd033257b969370b73d9da982dcb0c3fdd
+pcsx_rearmed=ba61a4fdee1f789e8012f205f1b63826667644fa
+fbneo=26f11fa9e43227a04953e20e8c7e4bf322cd53cb
+mame2003_plus=21256d24120b04916c5197d95b757635ca880fd9
 dropbear=2026.94
 dropbear_source_sha256=e098034a843699200c8c977a991fff73159735bf795d5f72ef672c41a6b1ae81
 joypad_autoconfig=033151045d378b64e712a92592467800d7924227
+sdl_gamecontrollerdb=af76f5b56a180aabf3553a8b2b1c0bb7022a3274
 libretro_core_info=f8c1149c628c13be63a6ea605f49f0a94fec1421
 emuelec_carbon_theme=62509737c2f732b81ce7bf37f6c4c3b82dafae28
 emuelec_carbon_theme_source_sha256=214bb1bb7245caa1a31cf6c28ffebb8c0bce24fd3b656890a5e9ea2428bdf97e

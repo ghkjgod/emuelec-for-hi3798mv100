@@ -220,6 +220,7 @@ mkdir -p "${ES_SRC}/external/pugixml"
 tar -xzf "${PUGIXML_ARCHIVE}" --strip-components=1 -C "${ES_SRC}/external/pugixml"
 patch -d "${ES_SRC}" -p1 < "${SCRIPT_DIR}/patches/EmulationStation-HiSTB.patch"
 patch -d "${ES_SRC}" -p1 < "${SCRIPT_DIR}/patches/EmulationStation-OptionalSplash-HiSTB.patch"
+patch -d "${ES_SRC}" -p1 < "${SCRIPT_DIR}/patches/EmulationStation-ControllerDB-HiSTB.patch"
 
 echo "[7/7] EmulationStation GLES1 / Mali-fbdev"
 ES_BUILD="${BUILD_BASE}/cmake-build"

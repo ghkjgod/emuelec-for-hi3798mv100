@@ -15,14 +15,18 @@ CORE_INFO_COMMIT="f8c1149c628c13be63a6ea605f49f0a94fec1421"
 CORE_INFO_ARCHIVE="${HISTB_WORK_ROOT}/cache/sources/libretro-core-info-${CORE_INFO_COMMIT}.tar.gz"
 CORE_INFO_SHA256="0dbe5fd3a0b8a56b6c487b5c64e4258cb12a093d086c3c51220b514bf69e4344"
 CORE_INFO_WORK="${HISTB_WORK_ROOT}/build/libretro-core-info"
+CONTROLLER_DB_COMMIT="af76f5b56a180aabf3553a8b2b1c0bb7022a3274"
+CONTROLLER_DB_ARCHIVE="${HISTB_WORK_ROOT}/cache/sources/SDL_GameControllerDB-${CONTROLLER_DB_COMMIT}.tar.gz"
+CONTROLLER_DB_SHA256="b3fd72a383bf03077164ee4619d56836f91458e1df8a1675e1489b8396c74e8f"
+CONTROLLER_DB_WORK="${HISTB_WORK_ROOT}/build/SDL_GameControllerDB"
 THEME_COMMIT="62509737c2f732b81ce7bf37f6c4c3b82dafae28"
 THEME_ARCHIVE="${HISTB_WORK_ROOT}/cache/sources/es-theme-EmuELEC-carbon-${THEME_COMMIT}.tar.gz"
 THEME_SHA256="214bb1bb7245caa1a31cf6c28ffebb8c0bce24fd3b656890a5e9ea2428bdf97e"
 THEME_WORK="${HISTB_WORK_ROOT}/build/es-theme-EmuELEC-carbon"
 THEME_DEST="${OVERLAY}/share/emulationstation/themes/HiSTB-EmuELEC-carbon"
 CORE_NAMES=(
-  quicknes snes9x2010 gambatte vba_next genesis_plus_gx mednafen_pce_fast
-  pcsx_rearmed mame2003
+  fceumm gambatte gpsp mgba picodrive snes9x2010 mednafen_pce_fast
+  pcsx_rearmed fbneo mame2003_plus
 )
 
 if [[ ! -d "${AUTOCONFIG_REPO}/.git" ]] ||
@@ -73,6 +77,44 @@ mkdir -p "${CORE_INFO_WORK}"
 tar -xzf "${CORE_INFO_ARCHIVE}" -C "${CORE_INFO_WORK}"
 CORE_INFO_SOURCE="${CORE_INFO_WORK}/libretro-core-info-${CORE_INFO_COMMIT}"
 
+[[ -f "${CONTROLLER_DB_ARCHIVE}" ]] || {
+  echo "missing pinned SDL controller database archive: ${CONTROLLER_DB_ARCHIVE}" >&2
+  exit 1
+}
+printf '%s  %s\n' "${CONTROLLER_DB_SHA256}" "${CONTROLLER_DB_ARCHIVE}" |
+  sha256sum --check --status || {
+    echo "SDL controller database checksum mismatch" >&2
+    exit 1
+  }
+case "${CONTROLLER_DB_WORK}" in
+  "${HISTB_WORK_ROOT}/build/"*) rm -rf -- "${CONTROLLER_DB_WORK}" ;;
+  *) echo "unsafe controller database work path: ${CONTROLLER_DB_WORK}" >&2; exit 1 ;;
+esac
+mkdir -p "${CONTROLLER_DB_WORK}"
+tar -xzf "${CONTROLLER_DB_ARCHIVE}" -C "${CONTROLLER_DB_WORK}"
+CONTROLLER_DB_SOURCE="${CONTROLLER_DB_WORK}/mdqinc-SDL_GameControllerDB-af76f5b"
+[[ -f "${CONTROLLER_DB_SOURCE}/gamecontrollerdb.txt" && \
+   -f "${CONTROLLER_DB_SOURCE}/LICENSE" ]] || {
+  echo "SDL controller database archive lacks data or license" >&2
+  exit 1
+}
+awk '
+  /^[[:space:]]*($|#)/ { next }
+  /^xinput,[^,]+,/ { next }
+  {
+    comma=index($0, ","); guid=substr($0, 1, comma - 1)
+    if (comma > 1 && length(guid) == 32 && guid !~ /[^0-9a-fA-F]/ &&
+        substr($0, comma + 1) ~ /^[^,]+,/) {
+      mappings++; if (index($0, "platform:Linux") != 0) linux++; next
+    }
+  }
+  { bad=1 }
+  END { exit (bad || mappings == 0 || linux == 0) ? 1 : 0 }
+' "${CONTROLLER_DB_SOURCE}/gamecontrollerdb.txt" || {
+  echo "pinned SDL controller database failed syntax validation" >&2
+  exit 1
+}
+
 [[ -f "${THEME_ARCHIVE}" ]] || {
   echo "missing pinned EmuELEC Carbon theme archive: ${THEME_ARCHIVE}" >&2
   exit 1
@@ -106,13 +148,18 @@ done
 install -d "${OVERLAY}/bin" "${OVERLAY}/etc/emulationstation" \
   "${OVERLAY}/share/emulationstation/diagnostics" \
   "${OVERLAY}/share/retroarch/autoconfig" \
-  "${OVERLAY}/share/libretro/info"
+  "${OVERLAY}/share/libretro/info" "${OVERLAY}/share/sdl" \
+  "${OVERLAY}/share/licenses/SDL_GameControllerDB"
 install -m 0755 "${RUNTIME_SOURCE}/bin/histb-runtime-exec" \
   "${OVERLAY}/bin/histb-runtime-exec"
 install -m 0755 "${RUNTIME_SOURCE}/bin/emuelec-utils" \
   "${OVERLAY}/bin/emuelec-utils"
 install -m 0755 "${RUNTIME_SOURCE}/bin/run-emulationstation.sh" \
   "${OVERLAY}/bin/run-emulationstation.sh"
+install -m 0755 "${RUNTIME_SOURCE}/bin/histb-sync-es-systems" \
+  "${OVERLAY}/bin/histb-sync-es-systems"
+install -m 0755 "${RUNTIME_SOURCE}/bin/histb-controller-db-select" \
+  "${OVERLAY}/bin/histb-controller-db-select"
 install -m 0755 "${RUNTIME_SOURCE}/bin/run-retroarch.sh" \
   "${OVERLAY}/bin/run-retroarch.sh"
 install -m 0644 "${SCRIPT_DIR}/retroarch-histb.cfg" \
@@ -121,6 +168,10 @@ install -m 0644 "${RUNTIME_SOURCE}/etc/emulationstation/es_systems.cfg" \
   "${OVERLAY}/etc/emulationstation/es_systems.cfg"
 install -m 0644 "${RUNTIME_SOURCE}/etc/emulationstation/es_input.cfg" \
   "${OVERLAY}/etc/emulationstation/es_input.cfg"
+install -m 0644 "${CONTROLLER_DB_SOURCE}/gamecontrollerdb.txt" \
+  "${OVERLAY}/share/sdl/gamecontrollerdb.txt"
+install -m 0644 "${CONTROLLER_DB_SOURCE}/LICENSE" \
+  "${OVERLAY}/share/licenses/SDL_GameControllerDB/LICENSE"
 install -m 0755 "${RUNTIME_SOURCE}/share/emulationstation/diagnostics/"*.sh \
   "${OVERLAY}/share/emulationstation/diagnostics/"
 case "${THEME_DEST}" in
@@ -189,5 +240,36 @@ done < <(find "${OVERLAY}/lib" -maxdepth 1 -type f \
   \( -name 'libSDL2-2.0.so*' -o -name 'libSDL2_mixer*.so*' \
      -o -name 'libogg.so*' -o -name 'libvorbis*.so*' \
      -o -name 'libfreeimage*.so*' -o -name 'libcurl.so*' \) | sort)
+
+# Keep an identity record inside the rootfs itself.  The release package adds
+# the final sparse-image checksum later, but that checksum cannot be embedded
+# in the filesystem it hashes.  This deterministic subset is enough for live
+# target tooling to bind evidence to the exact public recipe and core set.
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "${HISTB_EMUELEC_ROOT}" show -s --format=%ct HEAD)}"
+RUNTIME_RECIPE_SHA256="$(
+  (
+    cd "${HISTB_EMUELEC_ROOT}"
+    find tools/histb -path 'tools/histb/.git' -prune -o -type f -print0 |
+      LC_ALL=C sort -z | xargs -0 sha256sum
+  ) | sha256sum | awk '{print $1}'
+)"
+cat >"${OVERLAY}/BUILD-INFO" <<EOF
+kind=rootfs-runtime
+source_date_epoch=${SOURCE_DATE_EPOCH}
+recipe_sha256=${RUNTIME_RECIPE_SHA256}
+target=hi3798mv100-hi3798mdmo1g
+abi=ARMv7 EABI5 softfp
+fceumm=236ccdfc911e84c60fea6b9d0699c2d440a8de14
+gambatte=d9d6cd06382d1ced30de34d56d3609452323dab1
+gpsp=8d268a6bb2cd799f8f2791ebb544a7ef550cfc6f
+mgba=c65e8a3d4666b0ea68a01578232452f31b185332
+picodrive=733c711a477a642fd2006d5a7a581b2790ec36b4
+snes9x2010=7db129b1ecdccb38cb4d7184bcbed39beed79656
+mednafen_pce_fast=2f623abd033257b969370b73d9da982dcb0c3fdd
+pcsx_rearmed=ba61a4fdee1f789e8012f205f1b63826667644fa
+fbneo=26f11fa9e43227a04953e20e8c7e4bf322cd53cb
+mame2003_plus=21256d24120b04916c5197d95b757635ca880fd9
+sdl_gamecontrollerdb=af76f5b56a180aabf3553a8b2b1c0bb7022a3274
+EOF
 
 echo "Runtime launchers and minimum configuration staged at ${OVERLAY}"

@@ -1,0 +1,28 @@
+diff --git a/pico/sound/vgm.c b/pico/sound/vgm.c
+index 0ce836a..c319e4f 100644
+--- a/pico/sound/vgm.c
++++ b/pico/sound/vgm.c
+@@ -6,6 +6,7 @@
+  * https://vgmrips.net/wiki/VGM_Specification
+  */
+ #include <stdlib.h>
++#include <limits.h>
+ #include <string.h>
+ #include "../pico_int.h"
+ #include "sn76496.h"
+@@ -69,11 +70,10 @@ static struct vgm *g_vgm;
+ 
+ static size_t gzread_check(gzFile file, void *ptr, size_t size)
+ {
+-#if ZLIB_VERNUM >= 0x1290
+-  size_t read_size = gzfread(ptr, 1, size, file);
+-#else
+-  int read_size = gzread(file, ptr, size);
+-#endif
++  /* The target BSP header advertises gzfread(), while PicoDrive's bundled
++   * compatibility zlib implementation only exports gzread(). */
++  unsigned request = size > UINT_MAX ? UINT_MAX : (unsigned)size;
++  int read_size = gzread(file, ptr, request);
+   if (read_size == 0 || (long)read_size == -1)
+   {
+     int erri = Z_OK;

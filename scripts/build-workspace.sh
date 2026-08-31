@@ -25,7 +25,12 @@ if [[ "${HISTB_SKIP_SDK_BUILD:-0}" != 1 ]]; then
     # The first SDK pass creates vendor include/lib/rootbox inputs before the
     # EmuELEC application overlay exists.  The second pass in port/build-all.sh
     # composes the completed overlay into rootbox.
-    LC_ALL=C make SHELL=/bin/bash HISTB_EMUELEC_DISABLE=y \
+    # The board configuration enables both SquashFS and ext4, but this port
+    # ships and flashes only the full-p9 ext4 image.  The SDK's bundled,
+    # vendor-modified mksquashfs 4.3 crashes after reaching 100% on current
+    # Linux hosts.  Keep the complete SDK `build` target while limiting its
+    # image step to the format that is actually delivered.
+    LC_ALL=C make SHELL=/bin/bash HISTB_EMUELEC_DISABLE=y IMAGES=extfs \
       build -j"${JOBS}"
   )
 else

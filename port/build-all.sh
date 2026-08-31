@@ -11,40 +11,41 @@ mkdir -p "${HISTB_WORK_ROOT}/logs"
 LOG_FILE="${HISTB_WORK_ROOT}/logs/histb-emuelec-build-all.log"
 exec > >(tee "${LOG_FILE}") 2>&1
 
-echo "[1/14] SDK integration and full-p9 board configuration"
+echo "[1/13] SDK integration and full-p9 board configuration"
 "${SCRIPT_DIR}/prepare-sdk-integration.sh"
 
-echo "[2/14] Dropbear SSH (clean)"
+echo "[2/13] Dropbear SSH (clean)"
 "${SCRIPT_DIR}/build-dropbear.sh"
 
-echo "[3/14] EGL/GLES2 smoke"
+echo "[3/13] EGL/GLES2 smoke"
 "${SCRIPT_DIR}/build-egl-smoke.sh"
 
-echo "[4/14] EGL/GLES1 smoke"
+echo "[4/13] EGL/GLES1 smoke"
 "${SCRIPT_DIR}/build-egl-gles1-smoke.sh"
 
-echo "[5/14] SDL2 Mali-fbdev (clean)"
+echo "[5/13] SDL2 Mali-fbdev (clean)"
 "${SCRIPT_DIR}/build-sdl2.sh"
 
-echo "[6/14] RetroArch (clean)"
+echo "[6/13] RetroArch (clean)"
 "${SCRIPT_DIR}/build-retroarch.sh"
 
-echo "[7/14] QuickNES (clean)"
-"${SCRIPT_DIR}/build-quicknes.sh"
-
-echo "[8/14] Additional libretro cores (clean)"
+echo "[7/13] Current ten-core libretro set (clean)"
 "${SCRIPT_DIR}/build-libretro-cores.sh"
 
-echo "[9/14] EmulationStation and dependencies (clean)"
+echo "[8/13] EmulationStation and dependencies (clean)"
 "${SCRIPT_DIR}/build-emulationstation.sh"
 
-echo "[10/14] Runtime staging and configuration tests"
+echo "[9/13] Runtime staging and configuration tests"
 "${SCRIPT_DIR}/tests/test-runtime-exec.sh"
+"${SCRIPT_DIR}/tests/test-es-systems-upgrade.sh"
 "${SCRIPT_DIR}/tests/test-multicore-config.sh"
 "${SCRIPT_DIR}/tests/test-fullflash-config.sh"
+"${SCRIPT_DIR}/tests/test-tf-storage.sh"
+"${SCRIPT_DIR}/tests/test-controller-db.sh"
 "${SCRIPT_DIR}/stage-runtime.sh"
+"${SCRIPT_DIR}/package-tf-card.sh"
 
-echo "[11/14] BSP rootbox composition"
+echo "[10/13] BSP rootbox composition"
 (
   cd "${HISTB_SDK_ROOT}"
   # shellcheck disable=SC1091
@@ -55,7 +56,7 @@ echo "[11/14] BSP rootbox composition"
 "${SCRIPT_DIR}/configure-root-account.sh"
 "${SCRIPT_DIR}/normalize-rootbox-metadata.sh"
 
-echo "[12/14] Sparse full-p9 rootfs partition image"
+echo "[11/13] Sparse full-p9 rootfs partition image"
 (
   cd "${HISTB_SDK_ROOT}"
   # shellcheck disable=SC1091
@@ -63,11 +64,12 @@ echo "[12/14] Sparse full-p9 rootfs partition image"
   LC_ALL=C make SHELL=/bin/bash extfs
 )
 
-echo "[13/14] Sparse rootfs normalization and filesystem gate"
+echo "[12/13] Sparse rootfs normalization and filesystem gate"
 "${SCRIPT_DIR}/normalize-rootfs-image.sh"
 
-echo "[14/14] Dependency gate, versioned release, and image payload audit"
+echo "[13/13] Dependency gate, versioned release, and image payload audit"
 "${SCRIPT_DIR}/check-runtime-deps.sh"
 "${SCRIPT_DIR}/package-release.sh"
+"${SCRIPT_DIR}/package-flash-image.sh"
 
 echo "Complete. Log: ${LOG_FILE}"

@@ -25,8 +25,8 @@ REPORT="${HISTB_WORK_ROOT}/artifacts/rootfs-image-audit.txt"
 RELEASE_ID="$(basename "${ARCHIVE}" .tar.gz)"
 MIN_ROOTFS_FREE_BYTES=6442450944
 CORE_NAMES=(
-  quicknes snes9x2010 gambatte vba_next genesis_plus_gx mednafen_pce_fast
-  pcsx_rearmed mame2003
+  fceumm gambatte gpsp mgba picodrive snes9x2010 mednafen_pce_fast
+  pcsx_rearmed fbneo mame2003_plus
 )
 
 case "${AUDIT_ROOT}" in "${HISTB_WORK_ROOT}/build/"*) ;; *)
@@ -70,8 +70,18 @@ debugfs -R "rdump /opt/emuelec ${IMAGE_DUMP_ROOT}" "${RAW_IMAGE}" >/dev/null 2>&
 IMAGE_RUNTIME="${IMAGE_DUMP_ROOT}/emuelec"
 [[ -x "${IMAGE_RUNTIME}/bin/emulationstation" ]]
 [[ -x "${IMAGE_RUNTIME}/bin/retroarch" ]]
+[[ -f "${IMAGE_RUNTIME}/BUILD-INFO" ]]
+grep -qx 'kind=rootfs-runtime' "${IMAGE_RUNTIME}/BUILD-INFO"
+grep -qx 'target=hi3798mv100-hi3798mdmo1g' "${IMAGE_RUNTIME}/BUILD-INFO"
+grep -qx 'abi=ARMv7 EABI5 softfp' "${IMAGE_RUNTIME}/BUILD-INFO"
+[[ -x "${IMAGE_RUNTIME}/bin/histb-core-probe" ]]
 [[ -x "${IMAGE_RUNTIME}/bin/histb-runtime-exec" ]]
+[[ -x "${IMAGE_RUNTIME}/bin/histb-controller-db-select" ]]
 [[ -x "${IMAGE_RUNTIME}/bin/emuelec-utils" ]]
+[[ -f "${IMAGE_RUNTIME}/share/sdl/gamecontrollerdb.txt" ]]
+grep -aFq 'HISTB_GAMECONTROLLERDB' "${IMAGE_RUNTIME}/bin/emulationstation"
+grep -aFq 'SDL controller mappings from' "${IMAGE_RUNTIME}/bin/emulationstation"
+[[ -f "${IMAGE_RUNTIME}/share/licenses/SDL_GameControllerDB/LICENSE" ]]
 for theme_system in nes snes gb gba megadrive pcengine psx mame ports; do
   [[ -f "${IMAGE_RUNTIME}/share/emulationstation/themes/HiSTB-EmuELEC-carbon/${theme_system}/theme.xml" ]] || {
     echo "rootfs is missing compatible Carbon theme for: ${theme_system}" >&2
@@ -83,6 +93,12 @@ for core in "${CORE_NAMES[@]}"; do
     echo "rootfs is missing libretro core: ${core}" >&2
     exit 1
   }
+done
+for core in "${CORE_NAMES[@]}"; do
+  if ! find "${IMAGE_RUNTIME}/share/licenses/libretro-cores/${core}" -type f -print -quit | grep -q .; then
+    echo "rootfs is missing license material for libretro core: ${core}" >&2
+    exit 1
+  fi
 done
 core_count="$(find "${IMAGE_RUNTIME}/lib/libretro" -maxdepth 1 -type f \
   -name '*_libretro.so' | wc -l)"
@@ -104,6 +120,14 @@ PACKAGE_RUNTIME="${PACKAGE_DUMP_ROOT}/${RELEASE_ID}"
   cd "${PACKAGE_RUNTIME}"
   sha256sum --quiet -c MANIFEST.sha256
 )
+runtime_recipe_sha="$(awk -F= '$1 == "recipe_sha256" { print $2; count++ } END { if (count != 1) exit 1 }' \
+  "${IMAGE_RUNTIME}/BUILD-INFO")"
+package_recipe_sha="$(awk -F= '$1 == "recipe_sha256" { print $2; count++ } END { if (count != 1) exit 1 }' \
+  "${PACKAGE_RUNTIME}/BUILD-INFO")"
+[[ "${runtime_recipe_sha}" = "${package_recipe_sha}" ]] || {
+  echo "rootfs runtime recipe differs from release recipe" >&2
+  exit 1
+}
 grep -v '  \./BUILD-INFO$' "${PACKAGE_RUNTIME}/MANIFEST.sha256" \
   >"${AUDIT_ROOT}/runtime-subset.sha256"
 (
@@ -161,11 +185,13 @@ dump_and_compare /etc/init.d/S81histb-network \
   "${SCRIPT_DIR}/rootfs-overlay/etc/init.d/S81histb-network"
 dump_and_compare /etc/init.d/S82dropbear \
   "${SCRIPT_DIR}/rootfs-overlay/etc/init.d/S82dropbear"
+dump_and_compare /etc/init.d/S91histb-tf-storage \
+  "${SCRIPT_DIR}/rootfs-overlay/etc/init.d/S91histb-tf-storage"
 dump_and_compare /etc/init.d/S95emuelec \
   "${SCRIPT_DIR}/rootfs-overlay/etc/init.d/S95emuelec"
 for helper in histb-emuelec-stop histb-emuelec-supervisor histb-manual-smoke \
   histb-preflight histb-release-rollback histb-run-retroarch histb-storage-init \
-  histb-storage-guard; do
+  histb-storage-guard histb-tf-storage histb-tf-core-select; do
   dump_and_compare "/usr/bin/${helper}" \
     "${SCRIPT_DIR}/rootfs-overlay/usr/bin/${helper}"
 done
@@ -198,7 +224,6 @@ debugfs -R "rdump /storage ${IMAGE_DUMP_ROOT}" "${RAW_IMAGE}" >/dev/null 2>&1
 [[ -f "${IMAGE_DUMP_ROOT}/storage/ee/README.txt" ]]
 [[ -f "${IMAGE_DUMP_ROOT}/storage/ee/enable-autostart" ]]
 [[ ! -e "${IMAGE_DUMP_ROOT}/storage/ee/disable-autostart" ]]
-[[ ! -e "${IMAGE_DUMP_ROOT}/storage/roms/nes/HiSTB AV Input Test.nes" ]]
 grep -qx 'histb-emuelec-storage-v1' \
   "${IMAGE_DUMP_ROOT}/storage/.histb-emuelec-storage-v1"
 grep -Fq '"${STATE_ROOT}/enable-autostart"' \
@@ -213,6 +238,28 @@ grep -Fq 'HISTB_ENABLE_NETWORK' \
 grep -Fq 'HISTB_ENABLE_SSH' \
   "${AUDIT_ROOT}/integration/etc/init.d/S82dropbear"
 
+TEST_ROM_ROOT="${IMAGE_DUMP_ROOT}/storage/roms/nes"
+TEST_ROM="${TEST_ROM_ROOT}/240p Test Mini v0.23.nes"
+TEST_ROM_LICENSE="${TEST_ROM_ROOT}/240p Test Mini v0.23.LICENSE.txt"
+TEST_ROM_SOURCE="${TEST_ROM_ROOT}/240p Test Mini v0.23.SOURCE.txt"
+if [[ -f "${TEST_ROM}" ]]; then
+  [[ -f "${TEST_ROM_LICENSE}" && -f "${TEST_ROM_SOURCE}" ]] || {
+    echo "bundled test ROM is missing its license or source record" >&2
+    exit 1
+  }
+  bundled_test_rom="240p-test-mini-v0.23@$(sha256sum "${TEST_ROM}" | awk '{print $1}')"
+  bundled_test_rom_license="gpl-v2@$(sha256sum "${TEST_ROM_LICENSE}" | awk '{print $1}')"
+  bundled_test_rom_source="240p-test-mini-v0.23@$(sha256sum "${TEST_ROM_SOURCE}" | awk '{print $1}')"
+else
+  [[ ! -e "${TEST_ROM_LICENSE}" && ! -e "${TEST_ROM_SOURCE}" ]] || {
+    echo "test ROM metadata is present without the ROM payload" >&2
+    exit 1
+  }
+  bundled_test_rom=none
+  bundled_test_rom_license=none
+  bundled_test_rom_source=none
+fi
+
 manifest_entries="$(grep -vc '  \./BUILD-INFO$' "${PACKAGE_RUNTIME}/MANIFEST.sha256")"
 cat >"${REPORT}.new" <<EOF
 release_id=${RELEASE_ID}
@@ -224,15 +271,15 @@ raw_sparse_round_trip=verified-by-normalizer
 packaged_runtime_entries_verified=${manifest_entries}
 packaged_symlinks_verified=yes
 controller_profiles=${profile_count}
-bundled_test_rom=240p-test-mini-v0.23@04f01d7372f66ea2befe325b9bd655a9fcc395a31fa46d9466286bb8f9d2e62e
-bundled_test_rom_license=gpl-v2@8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643
-bundled_test_rom_source=240p-test-mini-v0.23@f2032b4657de1757b24a95582db8b4e6700a4c3f2914447144a2570a226c988b
+bundled_test_rom=${bundled_test_rom}
+bundled_test_rom_license=${bundled_test_rom_license}
+bundled_test_rom_source=${bundled_test_rom_source}
 libretro_cores=${core_count}
 libretro_core_info_files=${info_count}
 emulationstation_theme=HiSTB-EmuELEC-carbon@62509737c2f732b81ce7bf37f6c4c3b82dafae28
 rootfs_free_bytes=${rootfs_free_bytes}
 rootfs_minimum_free_bytes=${MIN_ROOTFS_FREE_BYTES}
-integration_files_verified=15
+integration_files_verified=18
 shutdown_stop_before_umount=yes
 autostart_default=enabled
 storage_layout=p9-root-ext4

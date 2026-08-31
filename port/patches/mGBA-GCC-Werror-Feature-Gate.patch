@@ -1,0 +1,19 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3b9e6d9..5b0ae84 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,8 +36,12 @@ if(NOT MSVC)
+ 	endif()
+ 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${WARNING_FLAGS} -Werror=implicit-function-declaration -Werror=implicit-int -fwrapv")
+ 	if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+-		# TODO: Remove this once mScript KV pairs support const correctness
+-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=incompatible-pointer-types")
++		include(CheckCCompilerFlag)
++		check_c_compiler_flag("-Werror=incompatible-pointer-types" HAVE_WERROR_INCOMPATIBLE_POINTER_TYPES)
++		if(HAVE_WERROR_INCOMPATIBLE_POINTER_TYPES)
++			# TODO: Remove this once mScript KV pairs support const correctness
++			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=incompatible-pointer-types")
++		endif()
+ 	endif()
+ 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${WARNING_FLAGS} -Woverloaded-virtual -Werror=reorder")
+ else()

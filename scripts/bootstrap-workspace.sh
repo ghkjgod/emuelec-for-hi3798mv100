@@ -14,7 +14,8 @@ esac
 
 for tool in git rsync sha256sum stat python3; do
   command -v "${tool}" >/dev/null || {
-    echo "missing host tool: ${tool}" >&2
+    echo "Setup cannot continue because '${tool}' is missing." >&2
+    echo "On Ubuntu, install the packages shown in README, then run ./easy-build.sh again." >&2
     exit 1
   }
 done
@@ -23,8 +24,9 @@ work_fs="$(stat -f -c %T "${WORKSPACE_ROOT}" 2>/dev/null || true)"
 case "${work_fs}" in
   ext2/ext3|ext4) ;;
   *)
-    echo "workspace must be cloned into a Linux ext filesystem, got ${work_fs:-unknown}: ${WORKSPACE_ROOT}" >&2
-    echo "On WSL2, place it in an attached/mounted ext4 VHD, not /mnt/c or /mnt/e." >&2
+    echo "Setup cannot continue: this folder is on ${work_fs:-an unknown filesystem}, not Linux ext4: ${WORKSPACE_ROOT}" >&2
+    echo "On Windows, open the Ubuntu WSL terminal and clone into your Linux home folder, for example ~/emuelec-for-hi3798mv100." >&2
+    echo "Do not build below /mnt/c, /mnt/d, or /mnt/e." >&2
     exit 1
     ;;
 esac
@@ -92,7 +94,11 @@ python3 "${port_target}/tests/test-es-command-argv.py" \
   "${port_target}/runtime/etc/emulationstation/es_systems.cfg"
 "${port_target}/tests/test-fullflash-config.sh"
 "${port_target}/tests/test-runtime-exec.sh"
+"${port_target}/tests/test-es-systems-upgrade.sh"
 "${port_target}/tests/test-supervisor-state.sh"
+"${port_target}/tests/test-tf-storage.sh"
+"${port_target}/tests/test-controller-db.sh"
+"${WORKSPACE_ROOT}/scripts/check-tf-card-tree.sh" "${WORKSPACE_ROOT}/tf-card"
 
 cat <<EOF
 Workspace ready.

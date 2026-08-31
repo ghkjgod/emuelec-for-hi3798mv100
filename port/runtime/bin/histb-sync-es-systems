@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -eu
+
+[ "$#" -eq 2 ] || {
+    echo "usage: $0 PACKAGED_ES_SYSTEMS TARGET_ES_SYSTEMS" >&2
+    exit 2
+}
+PACKAGED=$1
+TARGET=$2
+MARKER=${TARGET}.histb-managed-sha256
+
+# This is the exact es_systems.cfg shipped by the immediately preceding
+# public release.  It is safe to migrate automatically only while unchanged.
+LEGACY_SHA256=${HISTB_ES_LEGACY_SHA256:-95387f60773c5844363e3181d0cf70eeac5298602c70bb3e704aba7abd136288}
+
+[ -f "${PACKAGED}" ] || {
+    echo "packaged EmulationStation systems file is missing: ${PACKAGED}" >&2
+    exit 1
+}
+command -v sha256sum >/dev/null 2>&1 || {
+    echo "sha256sum is required to manage EmulationStation systems" >&2
+    exit 1
+}
+
+packaged_sha=$(sha256sum "${PACKAGED}" | awk '{print $1}')
+
+install_managed()
+{
+    target_tmp=${TARGET}.new.$$
+    marker_tmp=${MARKER}.new.$$
+    trap 'rm -f -- "${target_tmp}" "${marker_tmp}"' EXIT HUP INT TERM
+    cp "${PACKAGED}" "${target_tmp}"
+    chmod 0644 "${target_tmp}"
+    printf '%s\n' "${packaged_sha}" >"${marker_tmp}"
+    chmod 0644 "${marker_tmp}"
+    mv -f "${target_tmp}" "${TARGET}"
+    mv -f "${marker_tmp}" "${MARKER}"
+    trap - EXIT HUP INT TERM
+}
+
+if [ ! -e "${TARGET}" ]; then
+    install_managed
+    echo "installed managed EmulationStation systems configuration" >&2
+    exit 0
+fi
+[ -f "${TARGET}" ] || {
+    echo "preserving non-regular EmulationStation systems path: ${TARGET}" >&2
+    exit 0
+}
+
+target_sha=$(sha256sum "${TARGET}" | awk '{print $1}')
+if [ "${target_sha}" = "${packaged_sha}" ]; then
+    printf '%s\n' "${packaged_sha}" >"${MARKER}"
+    chmod 0644 "${MARKER}"
+    exit 0
+fi
+
+if [ -r "${MARKER}" ]; then
+    managed_sha=$(sed -n '1p' "${MARKER}")
+    if [ "${target_sha}" = "${managed_sha}" ]; then
+        install_managed
+        echo "updated managed EmulationStation systems configuration" >&2
+        exit 0
+    fi
+    echo "preserving user-modified EmulationStation systems configuration" >&2
+    exit 0
+fi
+
+if [ "${target_sha}" = "${LEGACY_SHA256}" ]; then
+    install_managed
+    echo "migrated unchanged legacy EmulationStation systems configuration" >&2
+else
+    echo "preserving unmanaged EmulationStation systems configuration" >&2
+fi

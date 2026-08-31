@@ -1,0 +1,245 @@
+#!/bin/sh
+
+set -u
+
+[ ! -r /etc/default/histb-tf-storage ] || . /etc/default/histb-tf-storage
+: "${HISTB_TF_ENABLE:=1}"
+: "${HISTB_TF_UUID:=}"
+: "${HISTB_TF_LABEL:=}"
+: "${HISTB_TF_MOUNT:=/media/emuelec-tf}"
+: "${HISTB_TF_CORE_MODE:=auto}"
+
+TEST_ROOT=${HISTB_TF_TEST_ROOT:-}
+if [ -n "${TEST_ROOT}" ]; then
+    SYS_CLASS_BLOCK=${TEST_ROOT}/sys/class/block
+    SYS_DEV_BLOCK=${TEST_ROOT}/sys/dev/block
+    PROC_FILESYSTEMS=${TEST_ROOT}/proc/filesystems
+    PROC_MOUNTINFO=${TEST_ROOT}/proc/self/mountinfo
+    PROC_MOUNTS=${TEST_ROOT}/proc/mounts
+    DEV_ROOT=${TEST_ROOT}/dev
+    STATE_FILE=${TEST_ROOT}/run/histb-tf-storage.env
+else
+    SYS_CLASS_BLOCK=/sys/class/block
+    SYS_DEV_BLOCK=/sys/dev/block
+    PROC_FILESYSTEMS=/proc/filesystems
+    PROC_MOUNTINFO=/proc/self/mountinfo
+    PROC_MOUNTS=/proc/mounts
+    DEV_ROOT=/dev
+    STATE_FILE=/var/run/histb-tf-storage.env
+fi
+CARD_DIR=EmuELEC
+
+log_message()
+{
+    echo "$*"
+    if [ -w /dev/ttyS000 ]; then
+        echo "$*" >/dev/ttyS000 2>/dev/null || true
+    fi
+}
+
+clear_state()
+{
+    rm -f "${STATE_FILE}"
+}
+
+safe_mount_path()
+{
+    case "${HISTB_TF_MOUNT}" in
+        /media/*|/mnt/*) return 0 ;;
+        "${TEST_ROOT}"/media/*) [ -n "${TEST_ROOT}" ] && return 0 ;;
+        *) log_message "TF card disabled: unsafe mount path ${HISTB_TF_MOUNT}"; return 1 ;;
+    esac
+}
+
+root_mmc_parent()
+{
+    root_info=$(awk '
+        $5 == "/" {
+            for (i = 6; i <= NF; i++) if ($i == "-") { print $3; exit }
+        }
+    ' "${PROC_MOUNTINFO}")
+    [ -n "${root_info}" ] || return 0
+    root_uevent=${SYS_DEV_BLOCK}/${root_info}/uevent
+    [ -r "${root_uevent}" ] || return 0
+    root_name=$(sed -n 's/^DEVNAME=//p' "${root_uevent}" | sed -n '1p')
+    case "${root_name}" in mmcblk*p*) printf '%s\n' "${root_name%%p*}" ;; esac
+}
+
+is_external_sd_partition()
+{
+    candidate=$1
+    name=${candidate##*/}
+    case "${name}" in mmcblk*p*) ;; *) return 1 ;; esac
+    parent=${name%%p*}
+    [ "${parent}" != "$(root_mmc_parent)" ] || return 1
+    [ -r "${SYS_CLASS_BLOCK}/${parent}/device/type" ] || return 1
+    [ "$(cat "${SYS_CLASS_BLOCK}/${parent}/device/type" 2>/dev/null)" = SD ] || return 1
+    [ -r "${SYS_CLASS_BLOCK}/${name}/partition" ] || return 1
+    return 0
+}
+
+blkid_value()
+{
+    field=$1
+    device=$2
+    blkid -s "${field}" -o value "${device}" 2>/dev/null | sed -n '1p'
+}
+
+select_partition()
+{
+    matches=
+    count=0
+    for sys_partition in "${SYS_CLASS_BLOCK}"/mmcblk*p*; do
+        [ -e "${sys_partition}" ] || continue
+        device=${DEV_ROOT}/${sys_partition##*/}
+        is_external_sd_partition "${device}" || continue
+        uuid=$(blkid_value UUID "${device}")
+        label=$(blkid_value LABEL "${device}")
+        if [ -n "${HISTB_TF_UUID}" ]; then
+            [ "${uuid}" = "${HISTB_TF_UUID}" ] || continue
+        elif [ -n "${HISTB_TF_LABEL}" ]; then
+            [ "${label}" = "${HISTB_TF_LABEL}" ] || continue
+        fi
+        matches="${device}"
+        count=$((count + 1))
+    done
+    [ "${count}" -eq 1 ] || {
+        if [ "${count}" -eq 0 ]; then
+            log_message "TF card not mounted: no external SD partition matched the configured UUID/label" >&2
+        else
+            log_message "TF card not mounted: ${count} external SD partitions matched; configure one UUID or label" >&2
+        fi
+        return 1
+    }
+    printf '%s\n' "${matches}"
+}
+
+filesystem_supported()
+{
+    wanted=$1
+    awk -v wanted="${wanted}" '$NF == wanted { found=1 } END { exit found ? 0 : 1 }' "${PROC_FILESYSTEMS}"
+}
+
+write_state()
+{
+    device=$1
+    fstype=$2
+    mode=$3
+    temp=${STATE_FILE}.new.$$
+    umask 022
+    {
+        printf 'mounted=1\n'
+        printf 'device=%s\n' "${device}"
+        printf 'fstype=%s\n' "${fstype}"
+        printf 'mount=%s\n' "${HISTB_TF_MOUNT}"
+        printf 'card_root=%s/%s\n' "${HISTB_TF_MOUNT}" "${CARD_DIR}"
+        printf 'core_mode=%s\n' "${mode}"
+    } >"${temp}"
+    mv -f "${temp}" "${STATE_FILE}"
+}
+
+start_card()
+{
+    clear_state
+    [ "${HISTB_TF_ENABLE}" = 1 ] || {
+        log_message "TF card support disabled by configuration"
+        return 0
+    }
+    safe_mount_path || return 1
+    command -v blkid >/dev/null 2>&1 || {
+        log_message "TF card not mounted: blkid is unavailable"
+        return 1
+    }
+    device=$(select_partition) || return 1
+    fstype=$(blkid_value TYPE "${device}")
+    case "${fstype}" in
+        ext4|vfat|exfat) ;;
+        '') log_message "TF card not mounted: ${device} has no readable filesystem signature"; return 1 ;;
+        *) log_message "TF card not mounted: unsupported filesystem ${fstype} on ${device}"; return 1 ;;
+    esac
+    filesystem_supported "${fstype}" || {
+        log_message "TF card not mounted: kernel does not currently support ${fstype}"
+        return 1
+    }
+
+    mkdir -p "${HISTB_TF_MOUNT}"
+    if mountpoint -q "${HISTB_TF_MOUNT}"; then
+        mounted_source=$(awk -v target="${HISTB_TF_MOUNT}" '$2 == target { print $1; exit }' "${PROC_MOUNTS}")
+        [ "${mounted_source}" = "${device}" ] || {
+            log_message "TF card not mounted: stable path is already used by ${mounted_source}"
+            return 1
+        }
+    else
+        case "${fstype}" in
+            ext4)
+                options=rw,nodev,nosuid,noatime,exec
+                ;;
+            vfat)
+                options=rw,nodev,nosuid,noatime,noexec,utf8=1,fmask=0022,dmask=0022
+                ;;
+            exfat)
+                options=rw,nodev,nosuid,noatime,noexec,fmask=0022,dmask=0022
+                ;;
+        esac
+        if ! mount -t "${fstype}" -o "${options}" "${device}" "${HISTB_TF_MOUNT}"; then
+            log_message "TF card not mounted: ${fstype} mount failed for ${device}"
+            return 1
+        fi
+    fi
+
+    case "${HISTB_TF_CORE_MODE}" in
+        disabled) selected_mode=disabled ;;
+        cache) selected_mode=cache ;;
+        direct)
+            if [ "${fstype}" = ext4 ]; then selected_mode=direct; else selected_mode=cache; fi
+            ;;
+        auto)
+            if [ "${fstype}" = ext4 ]; then selected_mode=direct; else selected_mode=cache; fi
+            ;;
+        *)
+            log_message "TF core mode ${HISTB_TF_CORE_MODE} is invalid; using disabled"
+            selected_mode=disabled
+            ;;
+    esac
+    write_state "${device}" "${fstype}" "${selected_mode}"
+
+    uuid=$(blkid_value UUID "${device}")
+    label=$(blkid_value LABEL "${device}")
+    if [ -d "${HISTB_TF_MOUNT}/${CARD_DIR}" ]; then
+        layout=ready
+    else
+        layout="missing ${CARD_DIR}/ directory"
+    fi
+    log_message "TF card mounted: device=${device} uuid=${uuid:-none} label=${label:-none} fs=${fstype} path=${HISTB_TF_MOUNT} core_mode=${selected_mode} layout=${layout}"
+    return 0
+}
+
+stop_card()
+{
+    clear_state
+    if mountpoint -q "${HISTB_TF_MOUNT}"; then
+        if ! umount "${HISTB_TF_MOUNT}"; then
+            log_message "TF card is busy; leaving ${HISTB_TF_MOUNT} mounted"
+            return 1
+        fi
+    fi
+    log_message "TF card storage stopped"
+}
+
+status_card()
+{
+    if [ -r "${STATE_FILE}" ] && mountpoint -q "${HISTB_TF_MOUNT}"; then
+        cat "${STATE_FILE}"
+        return 0
+    fi
+    echo 'mounted=0'
+    return 1
+}
+
+case "${1:-start}" in
+    start|rescan) start_card ;;
+    stop) stop_card ;;
+    restart) stop_card || true; start_card ;;
+    status) status_card ;;
+    *) echo "usage: $0 {start|stop|restart|rescan|status}" >&2; exit 2 ;;
+esac

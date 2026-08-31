@@ -7,32 +7,45 @@ HISTB_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=../env.sh
 source "${HISTB_DIR}/env.sh" >/dev/null
 CORE_NAMES=(
-  quicknes snes9x2010 gambatte vba_next genesis_plus_gx
-  mednafen_pce_fast pcsx_rearmed mame2003
+  fceumm gambatte gpsp mgba picodrive snes9x2010
+  mednafen_pce_fast pcsx_rearmed fbneo mame2003_plus
 )
 
 bash -n "${HISTB_DIR}/build-libretro-cores.sh" \
   "${HISTB_DIR}/build-retroarch.sh" \
   "${HISTB_DIR}/stage-runtime.sh" \
+  "${HISTB_DIR}/package-tf-card.sh" \
+  "${HISTB_DIR}/package-flash-image.sh" \
   "${HISTB_DIR}/package-release.sh" \
   "${HISTB_DIR}/check-rootfs-image.sh"
 sh -n "${HISTB_DIR}/runtime/bin/run-retroarch.sh" \
   "${HISTB_DIR}/runtime/bin/run-emulationstation.sh" \
+  "${HISTB_DIR}/runtime/bin/histb-sync-es-systems" \
+  "${HISTB_DIR}/runtime/bin/histb-controller-db-select" \
   "${HISTB_DIR}/runtime/bin/emuelec-utils"
 sh -n "${HISTB_DIR}/rootfs-overlay/emuelec/scripts/emuelec-utils"
+python3 - "${HISTB_DIR}/split-android-sparse-raw-chunks.py" <<'PY'
+import pathlib
+import sys
+compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec")
+PY
 
 for core in "${CORE_NAMES[@]}"; do
   grep -Fq "${core}" "${HISTB_DIR}/stage-runtime.sh"
   grep -Fq "${core}" "${HISTB_DIR}/package-release.sh"
+  grep -Fq "${core}" "${HISTB_DIR}/package-tf-card.sh"
   grep -Fq "${core}" "${HISTB_DIR}/check-rootfs-image.sh"
   grep -Fq "${core}" "${HISTB_DIR}/runtime/bin/run-retroarch.sh"
 done
 
 RETROARCH_BINARY="${HISTB_WORK_ROOT}/artifacts/overlay/opt/emuelec/bin/retroarch"
+ES_BINARY="${HISTB_WORK_ROOT}/artifacts/overlay/opt/emuelec/bin/emulationstation"
 PCSX_BINARY="${HISTB_WORK_ROOT}/artifacts/overlay/opt/emuelec/lib/libretro/pcsx_rearmed_libretro.so"
-for binary in "${RETROARCH_BINARY}" "${PCSX_BINARY}"; do
+for binary in "${RETROARCH_BINARY}" "${ES_BINARY}" "${PCSX_BINARY}"; do
   [[ -f "${binary}" ]]
 done
+grep -aFq 'HISTB_GAMECONTROLLERDB' "${ES_BINARY}"
+grep -aFq 'SDL controller mappings from' "${ES_BINARY}"
 grep -aFq 'Built: Oct 20 2021' "${RETROARCH_BINARY}"
 grep -aFq 'Oct 20 2021' "${PCSX_BINARY}"
 for binary in "${RETROARCH_BINARY}" "${PCSX_BINARY}"; do
@@ -46,7 +59,7 @@ for binary in "${RETROARCH_BINARY}" "${PCSX_BINARY}"; do
     exit 1
   fi
 done
-for core in "${CORE_NAMES[@]:1}"; do
+for core in "${CORE_NAMES[@]}"; do
   grep -Fq "${core}_libretro.so" "${HISTB_DIR}/build-libretro-cores.sh"
 done
 
@@ -57,7 +70,7 @@ grep -Fq 'content_history_path' \
   "${HISTB_DIR}/runtime/bin/run-retroarch.sh"
 grep -Fq 'content_favorites_path' \
   "${HISTB_DIR}/runtime/bin/run-retroarch.sh"
-for rom_dir in nes snes gb gba megadrive pce psx arcade; do
+for rom_dir in nes snes gb gba megadrive pce psx arcade fbneo mame pgm2; do
   grep -Fq "roms/${rom_dir}" \
     "${HISTB_DIR}/runtime/bin/run-emulationstation.sh"
   grep -Fq "roms/${rom_dir}" \
@@ -65,11 +78,20 @@ for rom_dir in nes snes gb gba megadrive pce psx arcade; do
 done
 grep -Fq '${RUNTIME_SOURCE}/bin/emuelec-utils' "${HISTB_DIR}/stage-runtime.sh"
 grep -Fq 'emuelec.conf' "${HISTB_DIR}/runtime/bin/run-emulationstation.sh"
+grep -Fq 'histb-sync-es-systems' "${HISTB_DIR}/runtime/bin/run-emulationstation.sh"
 grep -Fq '/usr/bin/histb-storage-guard --require-marker' \
   "${HISTB_DIR}/runtime/bin/emuelec-utils"
 grep -Fq '/bin/emuelec-utils' "${HISTB_DIR}/rootfs-overlay/emuelec/scripts/emuelec-utils"
 [[ "$(grep -Fc '${OVERLAY}/bin/emuelec-utils' "${HISTB_DIR}/package-release.sh")" = 2 ]]
 grep -Fq 'libretro-core-info-' "${HISTB_DIR}/stage-runtime.sh"
+grep -Fq 'SDL_GameControllerDB-' "${HISTB_DIR}/stage-runtime.sh"
+grep -Fq 'contains_bios=0' "${HISTB_DIR}/package-tf-card.sh"
+grep -Fq 'contains_roms=0' "${HISTB_DIR}/package-tf-card.sh"
+grep -Fq 'partition=p9/rootfs only' "${HISTB_DIR}/package-flash-image.sh"
+grep -Fq 'not_a_complete_disk_image=1' "${HISTB_DIR}/package-flash-image.sh"
+grep -Fq 'transport_raw_chunk_max_bytes=' "${HISTB_DIR}/package-flash-image.sh"
+grep -Fq 'EmulationStation-ControllerDB-HiSTB.patch' "${HISTB_DIR}/build-emulationstation.sh"
+grep -Fq 'HISTB_GAMECONTROLLERDB' "${HISTB_DIR}/runtime/bin/run-emulationstation.sh"
 grep -Fq 'share/libretro' "${HISTB_DIR}/package-release.sh"
 grep -Fq 'rootfs_minimum_free_bytes' "${HISTB_DIR}/check-rootfs-image.sh"
 
@@ -177,15 +199,33 @@ import sys
 import xml.etree.ElementTree as ET
 
 expected = {
-    "nes": "quicknes",
+    "nes": "fceumm",
     "snes": "snes9x2010",
     "gb": "gambatte",
-    "gba": "vba_next",
-    "megadrive": "genesis_plus_gx",
+    "gba": "gpsp",
+    "gba-mgba": "mgba",
+    "megadrive": "picodrive",
     "pce": "mednafen_pce_fast",
     "psx": "pcsx_rearmed",
-    "arcade": "mame2003",
+    "arcade": "mame2003_plus",
+    "fbneo": "fbneo",
+    "mame": "mame2003_plus",
+    "pgm2": "fbneo",
     "diagnostics": None,
+    "tf-nes": "fceumm",
+    "tf-snes": "snes9x2010",
+    "tf-gb": "gambatte",
+    "tf-gba": "gpsp",
+    "tf-gba-mgba": "mgba",
+    "tf-megadrive": "picodrive",
+    "tf-pce": "mednafen_pce_fast",
+    "tf-psx": "pcsx_rearmed",
+    "tf-arcade": "mame2003_plus",
+    "tf-fbneo": "fbneo",
+    "tf-mame": "mame2003_plus",
+    "tf-pgm2": "fbneo",
+    "tf-nesh": "fceumm",
+    "tf-famicom": "fceumm",
 }
 root = ET.parse(sys.argv[1]).getroot()
 systems = {node.findtext("name"): node for node in root.findall("system")}
@@ -199,9 +239,12 @@ for name, core in expected.items():
         wanted = f'run-retroarch.sh {core} %ROM%'
     if wanted not in command:
         raise SystemExit(f"{name}: missing command fragment {wanted!r}")
+    path = systems[name].findtext("path") or ""
+    if name.startswith("tf-") and not path.startswith("/media/emuelec-tf/EmuELEC/roms/"):
+        raise SystemExit(f"{name}: TF path is not below the stable mount: {path!r}")
 PY
 
 python3 -B "${SCRIPT_DIR}/test-es-command-argv.py" \
   "${HISTB_DIR}/runtime/etc/emulationstation/es_systems.cfg"
 
-printf '%s\n' 'PASS: eight-core build, package, launcher, ES mappings, and controller profiles'
+printf '%s\n' 'PASS: ten-core build, package, launcher, ES mappings, and controller profiles'

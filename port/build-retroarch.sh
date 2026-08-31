@@ -132,9 +132,15 @@ make -j"${JOBS}" \
 
 mkdir -p "${STAGE_ROOT}/opt/emuelec/bin" "${STAGE_ROOT}/opt/emuelec/etc"
 cp retroarch "${STAGE_ROOT}/opt/emuelec/bin/retroarch"
+"${CC}" ${CPPFLAGS} ${CFLAGS} \
+  "${SCRIPT_DIR}/histb-core-probe.c" \
+  -o "${STAGE_ROOT}/opt/emuelec/bin/histb-core-probe" \
+  ${LDFLAGS} -ldl
 cp "${SCRIPT_DIR}/retroarch-histb.cfg" \
   "${STAGE_ROOT}/opt/emuelec/etc/retroarch.cfg"
 "${STRIP}" --strip-unneeded "${STAGE_ROOT}/opt/emuelec/bin/retroarch"
+"${STRIP}" --strip-unneeded "${STAGE_ROOT}/opt/emuelec/bin/histb-core-probe"
 
 "${SCRIPT_DIR}/check-elf-abi.sh" "${STAGE_ROOT}/opt/emuelec/bin/retroarch"
+"${SCRIPT_DIR}/check-elf-abi.sh" "${STAGE_ROOT}/opt/emuelec/bin/histb-core-probe"
 printf 'RetroArch staged under %s/opt/emuelec\n' "${STAGE_ROOT}"

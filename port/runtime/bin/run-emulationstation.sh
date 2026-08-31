@@ -31,6 +31,8 @@ mkdir -p "${ES_CONFIG}" "${STATE_ROOT}/logs" "${STATE_ROOT}/diagnostics" \
     "${STORAGE_ROOT}/roms/gb" "${STORAGE_ROOT}/roms/gba" \
     "${STORAGE_ROOT}/roms/megadrive" "${STORAGE_ROOT}/roms/pce" \
     "${STORAGE_ROOT}/roms/psx" "${STORAGE_ROOT}/roms/arcade" \
+    "${STORAGE_ROOT}/roms/fbneo" "${STORAGE_ROOT}/roms/mame" \
+    "${STORAGE_ROOT}/roms/pgm2" \
     "${STORAGE_ROOT}/roms/bios" \
     "${STORAGE_ROOT}/roms/BGM" "${STORAGE_ROOT}/roms/bezels" \
     "${STORAGE_ROOT}/roms/mplayer" \
@@ -53,10 +55,9 @@ if [ ! -f "${SYSTEM_CONF}" ]; then
 fi
 
 
-if [ ! -f "${ES_CONFIG}/es_systems.cfg" ]; then
-    cp "${RUNTIME_ROOT}/etc/emulationstation/es_systems.cfg" \
-        "${ES_CONFIG}/es_systems.cfg"
-fi
+"${RUNTIME_ROOT}/bin/histb-sync-es-systems" \
+    "${RUNTIME_ROOT}/etc/emulationstation/es_systems.cfg" \
+    "${ES_CONFIG}/es_systems.cfg"
 if [ ! -f "${ES_CONFIG}/es_input.cfg" ]; then
     cp "${RUNTIME_ROOT}/etc/emulationstation/es_input.cfg" \
         "${ES_CONFIG}/es_input.cfg"
@@ -100,6 +101,14 @@ export LD_LIBRARY_PATH=${RUNTIME_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}
 export SDL_VIDEODRIVER=${SDL_VIDEODRIVER:-mali}
 export SDL_AUDIODRIVER=${SDL_AUDIODRIVER:-alsa}
 export HISTB_LOG_ROOT=${STATE_ROOT}/logs
+HISTB_GAMECONTROLLERDB=$(HISTB_EE_ROOT="${RUNTIME_ROOT}" \
+    "${RUNTIME_ROOT}/bin/histb-controller-db-select")
+export HISTB_GAMECONTROLLERDB
+case "${HISTB_GAMECONTROLLERDB}" in
+    /media/*|/mnt/*) CONTROLLER_DB_SOURCE=tf ;;
+    *) CONTROLLER_DB_SOURCE=builtin ;;
+esac
+echo "HiSTB controller database source=${CONTROLLER_DB_SOURCE} path=${HISTB_GAMECONTROLLERDB}" >&2
 
 cd "${RUNTIME_ROOT}/bin"
 exec "${RUNTIME_ROOT}/bin/histb-runtime-exec" "${RUNTIME_ROOT}" \

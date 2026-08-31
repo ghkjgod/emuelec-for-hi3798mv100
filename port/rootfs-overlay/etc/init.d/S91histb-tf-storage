@@ -1,0 +1,15 @@
+#!/bin/sh
+
+HELPER=/usr/bin/histb-tf-storage
+
+case "${1:-start}" in
+    start) "${HELPER}" start || true ;;
+    stop) "${HELPER}" stop || true ;;
+    restart) "${HELPER}" stop || true; "${HELPER}" start || true ;;
+    status) "${HELPER}" status ;;
+    *) echo "usage: $0 {start|stop|restart|status}" >&2; exit 2 ;;
+esac
+
+# A missing, unsupported, or damaged TF card must never block the internal
+# EmuELEC system from reaching EmulationStation.
+exit 0

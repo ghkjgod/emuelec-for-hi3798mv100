@@ -1,0 +1,68 @@
+#!/bin/sh
+
+set -eu
+
+if [ -n "${HISTB_EE_ROOT:-}" ]; then
+    RUNTIME_ROOT=${HISTB_EE_ROOT}
+else
+    SCRIPT_DIR=$(dirname "$0")
+    RUNTIME_ROOT=$(cd "${SCRIPT_DIR}/.." && pwd)
+fi
+BUILTIN=${RUNTIME_ROOT}/share/sdl/gamecontrollerdb.txt
+TF_STATE=${HISTB_TF_STATE:-/var/run/histb-tf-storage.env}
+TF_MOUNT=${HISTB_TF_MOUNT:-/media/emuelec-tf}
+
+[ -f "${BUILTIN}" ] || {
+    echo "built-in SDL controller database is missing: ${BUILTIN}" >&2
+    exit 1
+}
+if [ -r "${TF_STATE}" ]; then
+    state_mount=$(awk -F= '$1 == "mount" { sub(/^[^=]*=/, ""); print; exit }' "${TF_STATE}")
+    case "${state_mount}" in /media/*|/mnt/*) TF_MOUNT=${state_mount} ;; esac
+fi
+CANDIDATE=${TF_MOUNT}/EmuELEC/config/gamecontrollerdb.txt
+MANIFEST=${TF_MOUNT}/EmuELEC/config/gamecontrollerdb.sha256
+
+fallback()
+{
+    echo "$1" >&2
+    printf '%s\n' "${BUILTIN}"
+    exit 0
+}
+
+[ -e "${CANDIDATE}" ] || { printf '%s\n' "${BUILTIN}"; exit 0; }
+[ -f "${CANDIDATE}" ] && [ ! -L "${CANDIDATE}" ] || fallback \
+    "TF controller database is not a regular file; using built-in fallback"
+[ -f "${MANIFEST}" ] && [ ! -L "${MANIFEST}" ] || fallback \
+    "TF controller database checksum is missing; using built-in fallback"
+size=$(wc -c <"${CANDIDATE}" | tr -d '[:space:]')
+case "${size}" in ''|*[!0-9]*) fallback "invalid TF controller database size" ;; esac
+[ "${size}" -ge 1024 ] && [ "${size}" -le 1048576 ] || fallback \
+    "TF controller database size is outside the 1 KiB-1 MiB limit"
+expected=$(awk '
+  NF == 2 && $2 == "gamecontrollerdb.txt" && length($1) == 64 && $1 !~ /[^0-9a-fA-F]/ {
+    print tolower($1); count++
+  }
+  END { if (count != 1) exit 1 }
+' "${MANIFEST}") || fallback \
+    "TF controller database checksum manifest is invalid; using built-in fallback"
+actual=$(sha256sum "${CANDIDATE}" | awk '{print $1}')
+[ "${actual}" = "${expected}" ] || fallback \
+    "TF controller database checksum mismatch; using built-in fallback"
+awk '
+  index($0, sprintf("%c", 0)) { bad=1 }
+  /^[[:space:]]*($|#)/ { next }
+  /^xinput,[^,]+,/ { next }
+  {
+    comma=index($0, ","); guid=substr($0, 1, comma - 1)
+    if (comma > 1 && length(guid) == 32 && guid !~ /[^0-9a-fA-F]/ &&
+        substr($0, comma + 1) ~ /^[^,]+,/) {
+      mappings++; if (index($0, "platform:Linux") != 0) linux++; next
+    }
+  }
+  { bad=1 }
+  END { exit (bad || mappings == 0 || linux == 0) ? 1 : 0 }
+' "${CANDIDATE}" || fallback \
+    "TF controller database content is invalid; using built-in fallback"
+
+printf '%s\n' "${CANDIDATE}"

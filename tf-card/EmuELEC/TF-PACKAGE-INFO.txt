@@ -1,0 +1,8 @@
+target=EC6108V9C / Hi3798MV100
+abi=ARMv7 EABI5 softfp, Cortex-A7, VFPv3-D16
+core_count=10
+snes_core=snes9x2010
+contains_bios=0
+contains_roms=0
+controller_database=SDL_GameControllerDB af76f5b56a180aabf3553a8b2b1c0bb7022a3274
+copy_scope=copy this EmuELEC directory to the TF card root, then add your licensed BIOS and ROM files

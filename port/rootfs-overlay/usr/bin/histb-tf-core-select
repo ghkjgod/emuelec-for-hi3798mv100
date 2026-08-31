@@ -1,0 +1,115 @@
+#!/bin/sh
+
+set -eu
+
+[ "$#" -eq 1 ] || {
+    echo "usage: $0 CORE" >&2
+    exit 2
+}
+CORE=$1
+case "${CORE}" in
+    fceumm|gambatte|gpsp|mgba|picodrive|snes9x2010|mednafen_pce_fast|pcsx_rearmed|fbneo|mame2003_plus) ;;
+    *) echo "unsupported TF core name: ${CORE}" >&2; exit 2 ;;
+esac
+
+STATE_FILE=${HISTB_TF_STATE_FILE:-/var/run/histb-tf-storage.env}
+RUNTIME_ROOT=${HISTB_EE_ROOT:-/opt/emuelec}
+STORAGE_ROOT=${HISTB_STORAGE_ROOT:-/storage}
+FILENAME=${CORE}_libretro.so
+
+state_value()
+{
+    key=$1
+    awk -F= -v key="${key}" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "${STATE_FILE}"
+}
+
+[ -r "${STATE_FILE}" ] || exit 1
+[ "$(state_value mounted)" = 1 ] || exit 1
+CARD_ROOT=$(state_value card_root)
+MODE=$(state_value core_mode)
+TF_MOUNT=$(state_value mount)
+case "${CARD_ROOT}" in "${TF_MOUNT}"/EmuELEC) ;; *) echo "unsafe TF state" >&2; exit 1 ;; esac
+mountpoint -q "${TF_MOUNT}" || {
+    echo "TF core unavailable: card is no longer mounted" >&2
+    exit 1
+}
+[ "${MODE}" != disabled ] || exit 1
+
+CORE_DIR=${CARD_ROOT}/cores
+CANDIDATE=${CORE_DIR}/${FILENAME}
+MANIFEST=${CORE_DIR}/cores.sha256
+[ -f "${CANDIDATE}" ] && [ -f "${MANIFEST}" ] || exit 1
+
+expected=$(awk -v name="${FILENAME}" '
+    $2 == name || $2 == "*" name { print $1 }
+' "${MANIFEST}")
+[ "$(printf '%s\n' "${expected}" | sed '/^$/d' | wc -l)" -eq 1 ] || {
+    echo "TF core rejected: cores.sha256 needs one exact entry for ${FILENAME}" >&2
+    exit 1
+}
+printf '%s\n' "${expected}" | grep -Eq '^[0-9A-Fa-f]{64}$' || {
+    echo "TF core rejected: invalid SHA-256 for ${FILENAME}" >&2
+    exit 1
+}
+actual=$(sha256sum "${CANDIDATE}" | awk '{print $1}')
+[ "${actual}" = "${expected}" ] || {
+    echo "TF core rejected: SHA-256 mismatch for ${FILENAME}" >&2
+    exit 1
+}
+
+elf_magic=$(dd if="${CANDIDATE}" bs=1 count=6 2>/dev/null | hexdump -v -e '1/1 "%02x"')
+machine=$(dd if="${CANDIDATE}" bs=1 skip=18 count=2 2>/dev/null | hexdump -v -e '1/1 "%02x"')
+flag_hex=$(dd if="${CANDIDATE}" bs=1 skip=37 count=1 2>/dev/null | hexdump -v -e '1/1 "%02x"')
+[ "${elf_magic}" = 7f454c460101 ] && [ "${machine}" = 2800 ] || {
+    echo "TF core rejected: expected 32-bit little-endian ARM ELF" >&2
+    exit 1
+}
+case "${flag_hex}" in ''|*[!0-9a-f]*) echo "TF core rejected: unreadable ARM flags" >&2; exit 1 ;; esac
+flag_byte=$((0x${flag_hex}))
+[ $((flag_byte & 4)) -eq 0 ] || {
+    echo "TF core rejected: hard-float ABI is incompatible with this softfp system" >&2
+    exit 1
+}
+
+selected=${CANDIDATE}
+source=direct-tf
+if [ "${MODE}" = cache ]; then
+    CACHE_DIR=${STORAGE_ROOT}/ee/core-cache/${CORE}
+    selected=${CACHE_DIR}/${actual}.so
+    lock=${CACHE_DIR}/.import-lock
+    mkdir -p "${CACHE_DIR}"
+    if mkdir "${lock}" 2>/dev/null; then
+        trap 'rm -f "${selected}.new.$$"; rmdir "${lock}" 2>/dev/null || true' EXIT HUP INT TERM
+        if [ ! -f "${selected}" ]; then
+            cp "${CANDIDATE}" "${selected}.new.$$"
+            [ "$(sha256sum "${selected}.new.$$" | awk '{print $1}')" = "${actual}" ]
+            chmod 0755 "${selected}.new.$$"
+            mv -f "${selected}.new.$$" "${selected}"
+            sync
+        fi
+        rmdir "${lock}"
+        trap - EXIT HUP INT TERM
+    elif [ ! -f "${selected}" ]; then
+        echo "TF core import is already active for ${CORE}" >&2
+        exit 1
+    fi
+    [ "$(sha256sum "${selected}" | awk '{print $1}')" = "${actual}" ] || {
+        echo "cached TF core failed its content hash" >&2
+        exit 1
+    }
+    source=tf-cache
+fi
+
+PROBE=${RUNTIME_ROOT}/bin/histb-core-probe
+RUNNER=${RUNTIME_ROOT}/bin/histb-runtime-exec
+[ -x "${PROBE}" ] && [ -x "${RUNNER}" ] || {
+    echo "TF core rejected: target core probe is unavailable" >&2
+    exit 1
+}
+if ! "${RUNNER}" "${RUNTIME_ROOT}" "${PROBE}" "${selected}" >/dev/null; then
+    echo "TF core rejected: target dlopen/dependency/libretro probe failed" >&2
+    exit 1
+fi
+
+echo "HiSTB core source=${source} core=${CORE} sha256=${actual} path=${selected}" >&2
+printf '%s\n' "${selected}"

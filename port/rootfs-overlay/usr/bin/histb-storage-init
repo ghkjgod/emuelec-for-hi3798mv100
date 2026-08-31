@@ -24,6 +24,8 @@ mkdir -p "${STORAGE_ROOT}/ee/releases" "${STORAGE_ROOT}/ee/logs" \
     "${STORAGE_ROOT}/roms/gb" "${STORAGE_ROOT}/roms/gba" \
     "${STORAGE_ROOT}/roms/megadrive" "${STORAGE_ROOT}/roms/pce" \
     "${STORAGE_ROOT}/roms/psx" "${STORAGE_ROOT}/roms/arcade" \
+    "${STORAGE_ROOT}/roms/fbneo" "${STORAGE_ROOT}/roms/mame" \
+    "${STORAGE_ROOT}/roms/pgm2" \
     "${STORAGE_ROOT}/roms/bios" \
     "${STORAGE_ROOT}/roms/BGM" "${STORAGE_ROOT}/roms/bezels" \
     "${STORAGE_ROOT}/roms/mplayer" \
