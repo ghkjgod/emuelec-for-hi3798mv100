@@ -21,6 +21,10 @@ EC6108V9C 机顶盒。它适合愿意折腾旧盒子的玩家，也保留了开�
 如果你第一次接触这些名词，不必先学会它们。按下一节构建即可，遇到术语再看
 [名词解释](#名词解释)。
 
+**第一次编译、不知道从哪里开始，或者编译报错？** 请看
+[从零开始编译（详细操作手册）](docs/BUILD.md)：从安装 WSL2/Ubuntu、配置代理
+到常见错误对照表都有逐步说明。
+
 需要从源码一键得到官方 HiBurn 可写入的 p9/rootfs 镜像时，在 Linux ext4
 工作区运行：
 
@@ -91,7 +95,8 @@ ext4 卡上的兼容核心可以在 SHA-256、ARM softfp 和目标机动态加�
 
 ### Linux：整段复制
 
-下面以 Ubuntu/Debian 为例。仓库必须放在 Linux 的 ext4 文件系统中。
+下面以 Ubuntu/Debian 为例。仓库必须放在 Linux 的 ext4 文件系统中。每一步的
+详细解释、代理设置和排错见 [docs/BUILD.md](docs/BUILD.md)。
 
 ```bash
 sudo apt update
@@ -217,7 +222,7 @@ emuelec-for-hi3798mv100/
 ├── emuelec/             # 固定 EmuELEC 子模块
 ├── port/                # 移植源码、补丁、目标脚本和测试
 ├── scripts/             # bootstrap、下载和完整构建
-├── docs/                # TF 卡、SDK 和边界说明
+├── docs/                # 编译手册、TF 卡、SDK 和边界说明
 ├── WORKSPACE.lock
 ├── SOURCES.lock
 ├── artifacts/           # 构建生成，Git 忽略
@@ -279,7 +284,9 @@ export HISTB_ROOT_PASSWORD_HASH="$(openssl passwd -6)"
 export HISTB_ROOT_PASSWORD_HASH='!'
 ```
 
-可用 `HISTB_ENABLE_NETWORK=0`、`HISTB_ENABLE_SSH=0` 关闭对应服务。
+要关闭网络或 SSH，在盒子上的 `/etc/default/histb-network` 中设置
+`HISTB_ENABLE_NETWORK=0`，或在 `/etc/default/histb-ssh` 中设置
+`HISTB_ENABLE_SSH=0`。这两个是运行时配置，编译前 `export` 不起作用。
 
 ### 完整 p1–p9 文件的边界
 
